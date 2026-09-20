@@ -8,11 +8,11 @@ This site presents a lead capture form where visitors provide their contact info
 
 ## Pages
 
-- [Home](https://tvq16.vercel.app/): Main landing page containing the lead capture form.
+- [Home](https://www.duhoctrungquoc.tech/): Main landing page containing the lead capture form.
 
 ## Sitemap
 
-- [Sitemap](https://tvq16.vercel.app/sitemap.xml)
+- [Sitemap](https://www.duhoctrungquoc.tech/sitemap.xml)
 
 ## Notes
 
