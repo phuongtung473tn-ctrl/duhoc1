@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 
 function normalizeSiteUrl(value) {
   const raw = String(value || "").trim();
-  if (!raw) return "https://tvq10.vercel.app";
+  if (!raw) return "https://duhoctrungquoc.tech/";
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   const url = new URL(withProtocol);
   url.hash = "";
@@ -11,7 +11,7 @@ function normalizeSiteUrl(value) {
 }
 
 const siteUrl = normalizeSiteUrl(
-  process.env.VITE_SITE_URL || "https://tvq10.vercel.app",
+  process.env.VITE_SITE_URL || "https://duhoctrungquoc.tech/",
 );
 
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
