@@ -114,6 +114,10 @@ function writePayload(payload) {
       "city",
       "major",
       "source",
+      "sale_align",
+      "sale_assigned_to",
+      "sales_distribution_mode",
+      "sales_email_recipients",
       "landing_url",
       "ab_variant",
       "ai_score",
@@ -214,14 +218,18 @@ function ensureHeaders(sheet, headers) {
     sheet.appendRow(headers);
     return;
   }
-  const current = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+  const width = Math.max(sheet.getLastColumn(), headers.length);
+  const current = sheet.getRange(1, 1, 1, width).getValues()[0];
   const matches = headers.every(function (header, index) {
     return current[index] === header;
   });
-  if (!matches) {
-    sheet.insertRowBefore(1);
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  if (matches) return;
+  // Đổi tên cột trong Admin => ghi đè lại hàng tiêu đề, KHÔNG chèn hàng mới
+  // (chèn hàng sẽ tạo nhiều hàng tiêu đề trùng lặp trong Sheet).
+  if (headers.length < width) {
+    sheet.getRange(1, headers.length + 1, 1, width - headers.length).clearContent();
   }
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
 }
 
 function valueForSheet(value) {
