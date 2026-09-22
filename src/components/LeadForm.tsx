@@ -349,19 +349,17 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
 
       // Gán sale TRƯỚC khi gửi webhook, để kết quả phân bổ (sale_align) nằm
       // ngay trong payload của LẦN GỬI DUY NHẤT khi submit.
-      const parseSalesList = (value: string) =>
-        value
+      const parseSalesList = (value: unknown) =>
+        (Array.isArray(value) ? value.join(",") : String(value || ""))
           .split(/[;,\n]/)
           .map((item) => item.trim())
-          .filter(Boolean);
-      const configuredSalesList = Array.isArray(
+          .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item));
+      const configuredSalesList = parseSalesList(
         config.emailAutomation.salesEmailList,
-      )
-        ? config.emailAutomation.salesEmailList
-        : parseSalesList(String(config.emailAutomation.salesEmailList || ""));
+      );
       const salesRecipients =
         configuredSalesList.length > 0
-          ? configuredSalesList.map((item) => item.trim()).filter(Boolean)
+          ? configuredSalesList
           : parseSalesList(config.emailAutomation.notifyEmail);
       const notificationRecipients = parseSalesList(
         config.emailAutomation.notifyEmail,
@@ -392,6 +390,9 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         sales_distribution_mode: config.emailAutomation.salesDistributionMode,
         sales_email_recipients: allSalesRecipients.join(", "),
         notify_email: notificationRecipients.join(", "),
+        notify_email_configured: notificationRecipients.length > 0,
+        notification_recipient_count: notificationRecipients.length,
+        selected_sale_recipient: selectedSaleRecipient,
         full_name: name.slice(0, 100),
         phone,
         email: email.slice(0, 255),
@@ -704,7 +705,7 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
             return `<div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;padding:28px 24px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;color:#0f172a;line-height:1.7"><div style="display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid #e2e8f0;margin-bottom:16px;">${brandMarkup}<div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;font-weight:700;">${escapeHtml(brandName)}</div></div>${bodyHtml}<div style="margin-top:18px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:center;"><a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;">${escapeHtml(ctaLabel)}</a></div></div>`;
           };
           const emailRecipients = Array.from(
-            new Set([...allSalesRecipients, ...notificationRecipients]),
+            new Set([...salesRecipients, ...notificationRecipients]),
           );
 
           // Email cảm ơn gửi tới khách (nếu khách cung cấp email)

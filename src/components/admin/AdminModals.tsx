@@ -3019,15 +3019,14 @@ function EmailModal({ onClose }: ModalProps) {
       </Field>
       <Field
         label="Email nhận thông báo lead mới"
-        hint="Email mặc định / fallback. Dùng {name} {phone} {city} {major} {source} {ai_score} {timestamp}"
+        hint="Luôn nhận thông báo. Nhiều email ngăn cách bằng dấu phẩy, xuống dòng hoặc ;"
       >
-        <TextInput
-          type="email"
+        <TextArea
           value={e.notifyEmail}
           onChange={(ev) =>
             update((d) => (d.emailAutomation.notifyEmail = ev.target.value))
           }
-          placeholder="tu-van@congty.com"
+          placeholder="tu-van@congty.com\nquan-ly@congty.com"
         />
       </Field>
       <Field
