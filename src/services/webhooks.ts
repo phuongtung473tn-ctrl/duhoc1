@@ -73,14 +73,86 @@ function hashString(value: string): number {
 
 export function buildSheetsRequest(payload: Record<string, unknown>) {
   return {
-    body: `payload=${JSON.stringify(payload)}`,
-    contentType: "application/x-www-form-urlencoded;charset=UTF-8",
+    // text/plain is a CORS-simple request and Apps Script parses the body as
+    // JSON. This also works with older deployments that do not read form data.
+    body: JSON.stringify(payload),
+    contentType: "text/plain;charset=UTF-8",
   };
 }
 
 const TIMEOUT_MS = 4_000;
 // Apps Script khởi động chậm hơn webhook thường, 4s hay bị timeout giả.
 const SHEETS_TIMEOUT_MS = 12_000;
+
+async function sendSheetsDirect(
+  endpoint: string,
+  body: string,
+): Promise<WebhookResult> {
+  try {
+    // Apps Script accepts this simple request without a CORS preflight. The
+    // response is opaque, so this path means the request was handed to Google.
+    await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body,
+      mode: "no-cors",
+      keepalive: true,
+    });
+    return {
+      label: "Google Sheets",
+      ok: true,
+      attempts: 1,
+      detail: "direct_browser_post",
+    };
+  } catch (error) {
+    return {
+      label: "Google Sheets",
+      ok: false,
+      attempts: 1,
+      detail:
+        error instanceof Error ? error.message : "Direct Sheets request failed",
+    };
+  }
+}
+
+async function sendDirectWebhook(
+  endpoint: string,
+  body: unknown,
+  headers: Record<string, string>,
+  label: string,
+): Promise<WebhookResult> {
+  try {
+    const directHeaders = { ...headers };
+    // Make accepts the JSON webhook body and the endpoint allows the browser
+    // preflight. Keep the idempotency value in the payload as well.
+    delete directHeaders["X-Idempotency-Key"];
+    directHeaders["Content-Type"] = "application/json";
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: directHeaders,
+      body: JSON.stringify(body),
+      keepalive: true,
+    });
+    return {
+      label,
+      ok: response.ok,
+      attempts: 1,
+      detail: response.ok
+        ? "direct_browser_post"
+        : `HTTP ${response.status}: ${(await response.text()).slice(0, 180)}`,
+    };
+  } catch (error) {
+    return {
+      label,
+      ok: false,
+      attempts: 1,
+      detail:
+        error instanceof Error
+          ? error.message
+          : "Direct webhook request failed",
+    };
+  }
+}
 
 /**
  * Apps Script luôn trả HTTP 200 kể cả khi bản deploy không có doPost.
@@ -116,6 +188,7 @@ const MAX_PAYLOAD_BYTES = 60_000;
 
 export const WEBHOOK_FIELD_OPTIONS = [
   ["event", "Loại sự kiện"],
+  ["deployment_revision", "Phiên bản deployment"],
   ["webhook_delivery_id", "Mã giao webhook"],
   ["idempotency_key", "Mã chống trùng"],
   ["created_at", "Thời điểm submit"],
@@ -129,6 +202,15 @@ export const WEBHOOK_FIELD_OPTIONS = [
   ["sale_assigned_to", "Email sale được gán"],
   ["sales_distribution_mode", "Chế độ chia sale"],
   ["sales_email_recipients", "Danh sách sale tham gia chia"],
+  ["sales_distribution_weights", "Trọng số phân phối sale"],
+  ["sales_send_webhook", "Bật webhook gán sale"],
+  ["email_automation_enabled", "Bật tự động hóa email"],
+  ["email_provider", "Nhà cung cấp email"],
+  ["email_from_configured", "Đã cấu hình email From"],
+  ["email_customer_template", "Mẫu tiêu đề email khách"],
+  ["email_sales_template", "Mẫu tiêu đề email sale"],
+  ["email_customer_cta_url", "CTA URL khách"],
+  ["email_sales_cta_url", "CTA URL sale"],
   ["landing_url", "URL landing"],
   ["ab_variant", "Biến thể A/B"],
   ["ai_score", "AI score"],
@@ -166,6 +248,22 @@ export const WEBHOOK_FIELD_OPTIONS = [
 ] as const;
 
 export const DEFAULT_SHEETS_FIELDS = WEBHOOK_FIELD_OPTIONS.map(([key]) => key);
+
+const REQUIRED_LEAD_FIELDS = [
+  "sale_align",
+  "sale_assigned_to",
+  "sales_distribution_mode",
+  "sales_email_recipients",
+  "sales_distribution_weights",
+  "sales_send_webhook",
+  "email_automation_enabled",
+  "email_provider",
+  "email_from_configured",
+  "email_customer_template",
+  "email_sales_template",
+  "email_customer_cta_url",
+  "email_sales_cta_url",
+] as const;
 
 function validUrl(value: string): boolean {
   try {
@@ -249,17 +347,20 @@ async function postOne(
 
     if (ep.type === "sheets") {
       const hasFields = Boolean(ep.fields?.length);
+      const fields = hasFields
+        ? Array.from(new Set([...ep.fields!, ...REQUIRED_LEAD_FIELDS]))
+        : undefined;
       const hasColumnMap = Boolean(
         ep.columnMap && Object.keys(ep.columnMap).length,
       );
       const filtered = hasFields
         ? Object.fromEntries(
-            Object.entries(payload).filter(([key]) => ep.fields?.includes(key)),
+            Object.entries(payload).filter(([key]) => fields?.includes(key)),
           )
         : payload;
       body = {
         ...filtered,
-        ...(hasFields ? { sheet_fields: ep.fields } : {}),
+        ...(hasFields ? { sheet_fields: fields } : {}),
         ...(hasColumnMap ? { sheet_columns: ep.columnMap } : {}),
       };
     } else if (ep.type === "telegram") {
@@ -291,6 +392,13 @@ async function postOne(
             ? (body as Record<string, unknown>)
             : { payload: body },
         );
+        // Apps Script is intentionally sent directly. Routing it through the
+        // Vercel server function adds a 12s timeout and can fail independently
+        // of the working Apps Script deployment.
+        const direct = await sendSheetsDirect(endpoint, request.body);
+        if (direct.ok) {
+          return { ...direct, label: ep.label || ep.type };
+        }
         const relay = await Promise.race([
           relayWebhook({
             data: {
@@ -307,6 +415,12 @@ async function postOne(
           const sheetsError = relay.ok
             ? appsScriptError(relay.body ?? "")
             : relay.detail || `HTTP ${relay.status}`;
+          if (!relay.ok) {
+            const fallback = await sendSheetsDirect(endpoint, request.body);
+            if (fallback.ok) {
+              return { ...fallback, label: ep.label || ep.type, attempts: 2 };
+            }
+          }
           return {
             label: ep.label || ep.type,
             ok: relay.ok && !sheetsError,
@@ -314,22 +428,34 @@ async function postOne(
             detail: sheetsError ?? "server_relay_sheets",
           };
         }
-        return {
-          label: ep.label || ep.type,
-          ok: false,
-          attempts: 1,
-          detail: "Server relay timeout",
-        };
+        return sendSheetsDirect(
+          endpoint,
+          buildSheetsRequest(
+            typeof body === "object" && body !== null
+              ? (body as Record<string, unknown>)
+              : { payload: body },
+          ).body,
+        );
       } catch (error) {
-        return {
-          label: ep.label || ep.type,
-          ok: false,
-          attempts: 1,
-          detail:
-            error instanceof Error
-              ? error.message
-              : "Direct Sheets request failed",
-        };
+        const fallback = await sendSheetsDirect(
+          endpoint,
+          buildSheetsRequest(
+            typeof body === "object" && body !== null
+              ? (body as Record<string, unknown>)
+              : { payload: body },
+          ).body,
+        );
+        return fallback.ok
+          ? { ...fallback, label: ep.label || ep.type }
+          : {
+              label: ep.label || ep.type,
+              ok: false,
+              attempts: 2,
+              detail:
+                error instanceof Error
+                  ? `${error.message}; ${fallback.detail || "direct fallback failed"}`
+                  : fallback.detail || "Direct Sheets request failed",
+            };
       }
     }
 
@@ -343,6 +469,14 @@ async function postOne(
         ),
       ]);
       if (relay) {
+        if (!relay.ok) {
+          return sendDirectWebhook(
+            endpoint,
+            body,
+            headers,
+            ep.label || ep.type,
+          );
+        }
         return {
           label: ep.label || ep.type,
           ok: relay.ok,
@@ -352,19 +486,9 @@ async function postOne(
             : relay.detail || `HTTP ${relay.status}`,
         };
       }
-      return {
-        label: ep.label || ep.type,
-        ok: false,
-        attempts: 1,
-        detail: "Server relay timeout",
-      };
+      return sendDirectWebhook(endpoint, body, headers, ep.label || ep.type);
     } catch {
-      return {
-        label: ep.label || ep.type,
-        ok: false,
-        attempts: 1,
-        detail: "Server relay unavailable",
-      };
+      return sendDirectWebhook(endpoint, body, headers, ep.label || ep.type);
     }
   } catch (err) {
     return {
