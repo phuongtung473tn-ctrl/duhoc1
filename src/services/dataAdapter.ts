@@ -686,6 +686,26 @@ export function pushVisitorSessionHistory(record: VisitorSessionRecord): void {
   saveLocalVisitorSessionHistory(next);
 }
 
+export function summarizeVisitorSessionHistory(
+  sessions: VisitorSessionRecord[],
+): {
+  total: number;
+  today: number;
+  month: number;
+} {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const monthKey = new Date().toISOString().slice(0, 7);
+  return {
+    total: sessions.length,
+    today: sessions.filter(
+      (session) => String(session.visitedDay || "").slice(0, 10) === todayKey,
+    ).length,
+    month: sessions.filter(
+      (session) => String(session.visitedMonth || "").slice(0, 7) === monthKey,
+    ).length,
+  };
+}
+
 export async function loadVisitorSessionHistory(
   config?: SiteConfig,
 ): Promise<VisitorSessionRecord[]> {

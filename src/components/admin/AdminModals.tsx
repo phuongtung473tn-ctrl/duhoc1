@@ -46,6 +46,7 @@ import {
   deleteVisitorSessionRecord,
   deleteVisitorSessionHistory,
   clearVisitorSessionHistory,
+  summarizeVisitorSessionHistory,
 } from "@/services/dataAdapter";
 import { fireTestEvent, type TestEventLog } from "@/lib/tracking";
 import {
@@ -4275,6 +4276,9 @@ function VisitorSessionHistoryModal({ onClose }: ModalProps) {
     }
   };
 
+  const summary = summarizeVisitorSessionHistory(sessions);
+  const todayKey = new Date().toISOString().slice(0, 10);
+
   return (
     <AdminModal
       title="Lịch sử Visitor Session"
@@ -4287,6 +4291,26 @@ function VisitorSessionHistoryModal({ onClose }: ModalProps) {
           onChange={(event) => setFilter(event.target.value)}
           placeholder="Lọc theo nguồn, thiết bị, browser, city, visitor…"
         />
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wide text-neutral-500">
+              Tổng
+            </div>
+            <div className="text-lg font-bold text-neutral-900">{summary.total}</div>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wide text-amber-700">
+              Hôm nay
+            </div>
+            <div className="text-lg font-bold text-amber-800">{summary.today}</div>
+          </div>
+          <div className="rounded-xl border border-sky-200 bg-sky-50 p-2 text-center">
+            <div className="text-[10px] uppercase tracking-wide text-sky-700">
+              Tháng này
+            </div>
+            <div className="text-lg font-bold text-sky-800">{summary.month}</div>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -4310,7 +4334,9 @@ function VisitorSessionHistoryModal({ onClose }: ModalProps) {
       </div>
 
       <div className="mb-2 flex items-center justify-between text-[11px] text-neutral-500">
-        <span>{filteredSessions.length} phiên</span>
+        <span>
+          {filteredSessions.length} phiên trong bộ lọc · {todayKey}
+        </span>
         <span>{selectedIds.length} chọn</span>
       </div>
 

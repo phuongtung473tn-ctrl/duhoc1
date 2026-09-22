@@ -84,6 +84,67 @@ test("saveConfig stores a local copy and reports failed Supabase sync", async ()
   assert.ok(localStore.has("funnel_site_config_v1"));
 });
 
+test("summarizeVisitorSessionHistory reports totals for total, today, and month", async () => {
+  const { summarizeVisitorSessionHistory } = await import(
+    "../src/services/dataAdapter.ts"
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const month = new Date().toISOString().slice(0, 7);
+
+  const summary = summarizeVisitorSessionHistory([
+    {
+      id: "s1",
+      visitorId: "v1",
+      sessionId: "s1",
+      source: "google",
+      medium: "cpc",
+      campaign: "spring",
+      content: "hero",
+      deviceKind: "mobile",
+      deviceModel: "Pixel 8",
+      os: "Android 14",
+      browser: "Chrome",
+      variant: "A",
+      network: "Viettel",
+      country: "Việt Nam",
+      city: "Hà Nội",
+      createdAt: new Date().toISOString(),
+      visitedDay: today,
+      visitedMonth: month,
+      currentSession: 1,
+      todayVisits: 1,
+      monthVisits: 1,
+    },
+    {
+      id: "s2",
+      visitorId: "v2",
+      sessionId: "s2",
+      source: "direct",
+      medium: "",
+      campaign: "",
+      content: "",
+      deviceKind: "desktop",
+      deviceModel: "MacBook",
+      os: "macOS",
+      browser: "Safari",
+      variant: "B",
+      network: "FPT",
+      country: "Việt Nam",
+      city: "Đà Nẵng",
+      createdAt: new Date().toISOString(),
+      visitedDay: "2024-01-01",
+      visitedMonth: "2024-01",
+      currentSession: 2,
+      todayVisits: 0,
+      monthVisits: 0,
+    },
+  ]);
+
+  assert.equal(summary.total, 2);
+  assert.equal(summary.today, 1);
+  assert.equal(summary.month, 1);
+});
+
 test("loadCloudConfig keeps the newer local config when the cloud snapshot is older", async () => {
   localStore.clear();
   const localConfig = {
