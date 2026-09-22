@@ -168,12 +168,14 @@ function preserveLocalSecrets(
   return merged;
 }
 
-function persistLocalConfig(config: SiteConfig): void {
-  if (!isBrowser()) return;
+function persistLocalConfig(config: SiteConfig): boolean {
+  if (!isBrowser()) return false;
   try {
-    window.localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+    const serialized = JSON.stringify(config);
+    window.localStorage.setItem(CONFIG_KEY, serialized);
+    return window.localStorage.getItem(CONFIG_KEY) === serialized;
   } catch {
-    /* storage may be blocked */
+    return false;
   }
 }
 
@@ -276,11 +278,11 @@ export async function loadCloudConfig(
 
 export async function saveConfig(config: SiteConfig): Promise<boolean> {
   if (!isBrowser()) return false;
-  persistLocalConfig(config);
+  const localSaved = persistLocalConfig(config);
 
   if (config.admin.storageMode === "local") {
     appendLocalBackupSnapshot(config);
-    return true;
+    return localSaved;
   }
 
   if (config.admin.supabaseUrl && config.admin.supabaseAnonKey) {
@@ -2069,26 +2071,43 @@ async function syncConfigToSupabase(config: SiteConfig): Promise<boolean> {
     cloudConfig.emailAutomation.gmailClientSecret = "";
     cloudConfig.emailAutomation.gmailRefreshToken = "";
     cloudConfig.tracking.tiktokAccessToken = "";
-    const response = await fetch(
-      `${supabaseUrl.replace(/\/$/, "")}/rest/v1/${CLOUD_CONFIG_TABLE}?on_conflict=id`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Prefer: "resolution=merge-duplicates",
-          apikey: supabaseAnonKey,
-          Authorization: `Bearer ${bearer(supabaseAnonKey)}`,
-        },
-        body: JSON.stringify([
-          { id: 1, data: cloudConfig, updated_at: new Date().toISOString() },
-        ]),
-        signal: controller.signal,
+    const base = `${supabaseUrl.replace(/\/$/, "")}/rest/v1/${CLOUD_CONFIG_TABLE}`;
+    const headers = {
+      "Content-Type": "application/json",
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${bearer(supabaseAnonKey)}`,
+      Prefer: "return=representation",
+    };
+    const row = {
+      id: 1,
+      data: cloudConfig,
+      updated_at: new Date().toISOString(),
+    };
+    const patch = await fetch(`${base}?id=eq.1`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ data: row.data, updated_at: row.updated_at }),
+      signal: controller.signal,
+    });
+    if (patch.ok) return true;
+
+    const insert = await fetch(`${base}?on_conflict=id`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        Prefer: "resolution=merge-duplicates,return=representation",
       },
+      body: JSON.stringify([row]),
+      signal: controller.signal,
+    });
+    if (insert.ok) return true;
+    const detail = await (insert.ok ? patch.text() : insert.text()).catch(
+      () => "",
     );
-    if (!response.ok) {
-      console.warn(`Supabase config sync failed [${response.status}]`);
-    }
-    return response.ok;
+    console.warn(
+      `Supabase config sync failed [${insert.status || patch.status}]: ${detail.slice(0, 300)}`,
+    );
+    return false;
   } catch (err) {
     console.warn("Supabase config sync failed:", (err as Error).message);
     return false;
@@ -2127,36 +2146,7 @@ export async function migrateLocalDataToSupabase(
     return result;
   }
 
-  const configResponse = await fetch(
-    `${config.admin.supabaseUrl.replace(/\/$/, "")}/rest/v1/${CLOUD_CONFIG_TABLE}?on_conflict=id`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates,return=minimal",
-        apikey: config.admin.supabaseAnonKey,
-        Authorization: `Bearer ${bearer(config.admin.supabaseAnonKey)}`,
-      },
-      body: JSON.stringify([
-        {
-          id: 1,
-          data: (() => {
-            const cloudConfig = structuredClone(config);
-            cloudConfig.admin.supabaseAnonKey = "";
-            cloudConfig.admin.backupCronToken = "";
-            cloudConfig.emailAutomation.resendApiKey = "";
-            cloudConfig.emailAutomation.gmailClientId = "";
-            cloudConfig.emailAutomation.gmailClientSecret = "";
-            cloudConfig.emailAutomation.gmailRefreshToken = "";
-            cloudConfig.tracking.tiktokAccessToken = "";
-            return cloudConfig;
-          })(),
-          updated_at: new Date().toISOString(),
-        },
-      ]),
-    },
-  );
-  result.configSynced = configResponse.ok;
+  result.configSynced = await syncConfigToSupabase(config);
   result.analyticsSynced = await syncAnalyticsToSupabase(
     loadAnalytics(),
     config,
