@@ -254,9 +254,9 @@ export function loadConfig(): SiteConfig {
 /** Upload an image data URL to Supabase Storage and return its public URL. */
 export async function uploadConfigImageDataUrl(
   dataUrl: string,
-  contentType: string,
+  contentType = "",
 ): Promise<string | null> {
-  if (!isBrowser() || !dataUrl.startsWith("data:") || !contentType) return null;
+  if (!isBrowser() || !dataUrl.startsWith("data:")) return null;
   const config = loadConfig();
   const accessToken = getSupabaseAccessToken();
   if (
@@ -267,11 +267,19 @@ export async function uploadConfigImageDataUrl(
   )
     return null;
   try {
+    const header = dataUrl.slice(0, dataUrl.indexOf(","));
+    const detectedType = header.match(/^data:([^;,]+)/i)?.[1] || contentType;
+    if (!detectedType) return null;
     const encoded = dataUrl.split(",", 2)[1];
     if (!encoded) return null;
-    const binary = atob(encoded);
+    const binary = header.toLowerCase().includes(";base64")
+      ? atob(encoded)
+      : decodeURIComponent(encoded);
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    const extension = contentType.split("/", 2)[1]?.replace("svg+xml", "svg") || "bin";
+    const extension = detectedType
+      .split("/", 2)[1]
+      ?.replace("svg+xml", "svg")
+      ?.replace("x-icon", "ico") || "bin";
     const path = `landing/${crypto.randomUUID()}.${extension}`;
     const base = config.admin.supabaseUrl.replace(/\/$/, "");
     const response = await fetch(`${base}/storage/v1/object/site-assets/${path}`, {
@@ -289,6 +297,26 @@ export async function uploadConfigImageDataUrl(
   } catch {
     return null;
   }
+}
+
+async function externalizeConfigImages<T>(value: T): Promise<T> {
+  if (typeof value === "string") {
+    if (!/^data:image\//i.test(value)) return value;
+    return ((await uploadConfigImageDataUrl(value)) || value) as T;
+  }
+  if (Array.isArray(value)) {
+    return (await Promise.all(value.map((item) => externalizeConfigImages(item)))) as T;
+  }
+  if (value && typeof value === "object") {
+    const entries = await Promise.all(
+      Object.entries(value as Record<string, unknown>).map(async ([key, item]) => [
+        key,
+        await externalizeConfigImages(item),
+      ]),
+    );
+    return Object.fromEntries(entries) as T;
+  }
+  return value;
 }
 
 /** Nạp cấu hình landing từ Supabase khi Database Mode được bật. */
@@ -351,29 +379,31 @@ export async function loadCloudConfig(
 
 export async function saveConfig(config: SiteConfig): Promise<boolean> {
   if (!isBrowser()) return false;
-  const localSaved = persistLocalConfig(config);
 
   if (config.admin.storageMode === "local") {
+    const localSaved = persistLocalConfig(config);
     appendLocalBackupSnapshot(config);
     return localSaved;
   }
 
   if (config.admin.supabaseUrl && config.admin.supabaseAnonKey) {
     try {
+      const configToSave = await externalizeConfigImages(config);
+      persistLocalConfig(configToSave);
       if (!getSupabaseAccessToken()) {
         console.warn(
           "Supabase config sync skipped: admin access token is missing. Sign in again before saving Database Mode config.",
         );
         return false;
       }
-      const synced = await syncConfigToSupabase(config);
+      const synced = await syncConfigToSupabase(configToSave);
       // Database mode is authoritative for the full config. A large image-heavy
       // config can exceed the browser localStorage quota even when Supabase saves it.
       if (synced) return true;
 
       // A proxy can report a failed/empty POST even after Supabase committed it.
       // Read back the row before showing an error to the administrator.
-      const cloud = await loadCloudConfig(config);
+      const cloud = await loadCloudConfig(configToSave);
       if (cloud) {
         const comparable = (value: SiteConfig) => {
           const copy = structuredClone(value);
@@ -387,7 +417,7 @@ export async function saveConfig(config: SiteConfig): Promise<boolean> {
           copy.tracking.tiktokAccessToken = "";
           return JSON.stringify(copy);
         };
-        return comparable(cloud) === comparable(config);
+        return comparable(cloud) === comparable(configToSave);
       }
       return false;
     } catch {

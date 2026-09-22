@@ -1362,9 +1362,13 @@ function SeoModal({ onClose }: ModalProps) {
               const file = e.target.files?.[0];
               if (!file || file.size > 1024 * 1024) return;
               const reader = new FileReader();
-              reader.onload = () => {
-                if (typeof reader.result === "string")
-                  update((d) => (d.seo.ogImage = reader.result as string));
+              reader.onload = async () => {
+                if (typeof reader.result === "string") {
+                  const image =
+                    (await uploadConfigImageDataUrl(reader.result, file.type)) ||
+                    reader.result;
+                  update((d) => (d.seo.ogImage = image));
+                }
               };
               reader.readAsDataURL(file);
               e.target.value = "";
@@ -1425,9 +1429,13 @@ function SeoModal({ onClose }: ModalProps) {
               const file = e.target.files?.[0];
               if (!file || file.size > 512 * 1024) return;
               const reader = new FileReader();
-              reader.onload = () => {
-                if (typeof reader.result === "string")
-                  update((d) => (d.seo.faviconUrl = reader.result as string));
+              reader.onload = async () => {
+                if (typeof reader.result === "string") {
+                  const image =
+                    (await uploadConfigImageDataUrl(reader.result, file.type)) ||
+                    reader.result;
+                  update((d) => (d.seo.faviconUrl = image));
+                }
               };
               reader.readAsDataURL(file);
               e.target.value = "";
@@ -6412,7 +6420,7 @@ function LandingEditorModal({ onClose }: ModalProps) {
                 const file = event.target.files?.[0];
                 if (file) {
                   const reader = new FileReader();
-                  reader.onload = () => {
+                  reader.onload = async () => {
                     const result =
                       typeof reader.result === "string" ? reader.result : "";
                     const isAllowed =
@@ -6425,7 +6433,10 @@ function LandingEditorModal({ onClose }: ModalProps) {
                       );
                       return;
                     }
-                    update((draft) => (draft.footer.logoUrl = result));
+                    const storedLogo =
+                      (await uploadConfigImageDataUrl(result, file.type)) ||
+                      result;
+                    update((draft) => (draft.footer.logoUrl = storedLogo));
                     setFooterLogoError("");
                   };
                   reader.onerror = () =>
