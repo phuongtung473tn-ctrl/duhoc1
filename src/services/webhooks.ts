@@ -441,11 +441,9 @@ async function postOne(
       const hasColumnMap = Boolean(
         ep.columnMap && Object.keys(ep.columnMap).length,
       );
-      const filtered = Object.fromEntries(
-        Object.entries(payload).filter(([key]) => fields.includes(key)),
-      );
       body = {
-        ...filtered,
+        ...payload,
+        payload_contract_version: "lead-v4",
         sheet_fields: fields,
         ...(hasColumnMap ? { sheet_columns: ep.columnMap } : {}),
       };
