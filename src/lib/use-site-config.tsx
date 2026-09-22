@@ -19,6 +19,7 @@ import {
   saveConfig,
 } from "@/services/dataAdapter";
 import { decrementCountdownWithServiceRole } from "@/services/config.functions";
+import { getSupabaseAccessToken } from "@/lib/supabase-auth";
 
 interface SiteConfigContextValue {
   config: SiteConfig;
@@ -123,6 +124,7 @@ export function SiteConfigProvider({ children }: { children: ReactNode }) {
       data: {
         url: nextConfig.admin.supabaseUrl,
         anonKey: nextConfig.admin.supabaseAnonKey,
+        accessToken: getSupabaseAccessToken(),
       },
     });
     if (!serverSaved.ok) {

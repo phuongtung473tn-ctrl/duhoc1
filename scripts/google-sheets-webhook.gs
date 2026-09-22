@@ -172,6 +172,16 @@ function writePayload(payload) {
       "utm_params",
       "raw_payload",
     ];
+    // Keep older deployments forward-compatible with newly added payload keys.
+    Object.keys(payload).forEach(function (field) {
+      if (
+        allHeaders.indexOf(field) < 0 &&
+        field !== "sheet_fields" &&
+        field !== "sheet_columns"
+      ) {
+        allHeaders.push(field);
+      }
+    });
     // sourceFields: khóa payload dùng để lấy giá trị (giữ thứ tự Admin chọn).
     const sourceFields = selectedFields
       ? ["received_at"]

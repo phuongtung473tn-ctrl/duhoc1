@@ -12,22 +12,68 @@ const saveSchema = z.object({
 const countdownSchema = z.object({
   url: z.string().url(),
   anonKey: z.string().min(1).optional(),
+  accessToken: z.string().min(1).optional(),
 });
 
 async function decrementCountdownWithServiceRoleImpl(input: {
   url: string;
   anonKey?: string;
+  accessToken?: string;
 }): Promise<{ ok: boolean; changed?: boolean; reason?: string }> {
   const url = input.url.replace(/\/$/, "");
   const serviceKey = process.env["SUPABASE_SERVICE_ROLE_KEY"] || "";
   if (!serviceKey && !input.anonKey)
     return { ok: false, reason: "missing_supabase_key" };
+  const bearerToken = serviceKey || input.accessToken || input.anonKey || "";
+  if (!serviceKey && input.accessToken) {
+    const response = await fetch(
+      `${url}/rest/v1/funnel_configs?id=eq.1&select=data`,
+      {
+        headers: {
+          apikey: input.anonKey || input.accessToken,
+          Authorization: `Bearer ${input.accessToken}`,
+        },
+      },
+    );
+    if (!response.ok) return { ok: false, reason: "read_failed" };
+    const rows = (await response.json()) as Array<{
+      data?: Record<string, unknown>;
+    }>;
+    const data = rows[0]?.data;
+    const countdown = data?.["countdown"] as
+      Record<string, unknown> | undefined;
+    const slots = Number(countdown?.["slotsLeft"]);
+    if (!countdown || !Number.isFinite(slots)) {
+      return { ok: false, reason: "countdown_not_configured" };
+    }
+    if (slots <= 0) return { ok: true, changed: false };
+    const nextData = structuredClone(data ?? {}) as Record<string, unknown>;
+    nextData["countdown"] = { ...countdown, slotsLeft: slots - 1 };
+    const write = await fetch(`${url}/rest/v1/funnel_configs?id=eq.1`, {
+      method: "PATCH",
+      headers: {
+        apikey: input.anonKey || input.accessToken,
+        Authorization: `Bearer ${input.accessToken}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        data: nextData,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    if (!write.ok) return { ok: false, reason: "write_failed" };
+    const rowsWritten = (await write.json().catch(() => [])) as unknown[];
+    return rowsWritten.length > 0
+      ? { ok: true, changed: true }
+      : { ok: false, reason: "write_conflict" };
+  }
   if (!serviceKey && input.anonKey) {
     const rpc = await fetch(`${url}/rest/v1/rpc/decrement_funnel_countdown`, {
       method: "POST",
       headers: {
         apikey: input.anonKey,
-        Authorization: `Bearer ${input.anonKey}`,
+        Authorization: `Bearer ${bearerToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({}),
@@ -175,7 +221,7 @@ export const saveConfigWithSupabaseAuth = createServerFn({ method: "POST" })
   });
 
 export async function decrementCountdownWithServiceRole(input: {
-  data: { url: string; anonKey?: string };
+  data: { url: string; anonKey?: string; accessToken?: string };
 }): Promise<{ ok: boolean; changed?: boolean; reason?: string }> {
   const parsed = countdownSchema.safeParse(input.data);
   if (!parsed.success) {
@@ -187,7 +233,15 @@ export async function decrementCountdownWithServiceRole(input: {
     "",
   );
   return decrementCountdownWithServiceRoleImpl(
-    parsed.data.anonKey ? { url, anonKey: parsed.data.anonKey } : { url },
+    parsed.data.anonKey || parsed.data.accessToken
+      ? {
+          url,
+          ...(parsed.data.anonKey ? { anonKey: parsed.data.anonKey } : {}),
+          ...(parsed.data.accessToken
+            ? { accessToken: parsed.data.accessToken }
+            : {}),
+        }
+      : { url },
   );
 }
 
@@ -197,10 +251,11 @@ export const decrementCountdownWithServiceRoleServer = createServerFn({
   .validator((input) => countdownSchema.parse(input))
   .handler(async ({ data }) => {
     return decrementCountdownWithServiceRoleImpl(
-      data.anonKey
+      data.anonKey || data.accessToken
         ? {
             url: (process.env["SUPABASE_URL"] || data.url).replace(/\/$/, ""),
-            anonKey: data.anonKey,
+            ...(data.anonKey ? { anonKey: data.anonKey } : {}),
+            ...(data.accessToken ? { accessToken: data.accessToken } : {}),
           }
         : {
             url: (process.env["SUPABASE_URL"] || data.url).replace(/\/$/, ""),
