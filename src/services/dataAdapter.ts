@@ -251,6 +251,46 @@ export function loadConfig(): SiteConfig {
   }
 }
 
+/** Upload an image data URL to Supabase Storage and return its public URL. */
+export async function uploadConfigImageDataUrl(
+  dataUrl: string,
+  contentType: string,
+): Promise<string | null> {
+  if (!isBrowser() || !dataUrl.startsWith("data:") || !contentType) return null;
+  const config = loadConfig();
+  const accessToken = getSupabaseAccessToken();
+  if (
+    config.admin.storageMode !== "database" ||
+    !config.admin.supabaseUrl ||
+    !config.admin.supabaseAnonKey ||
+    !accessToken
+  )
+    return null;
+  try {
+    const encoded = dataUrl.split(",", 2)[1];
+    if (!encoded) return null;
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const extension = contentType.split("/", 2)[1]?.replace("svg+xml", "svg") || "bin";
+    const path = `landing/${crypto.randomUUID()}.${extension}`;
+    const base = config.admin.supabaseUrl.replace(/\/$/, "");
+    const response = await fetch(`${base}/storage/v1/object/site-assets/${path}`, {
+      method: "POST",
+      headers: {
+        apikey: config.admin.supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": contentType,
+        "x-upsert": "false",
+      },
+      body: bytes,
+    });
+    if (!response.ok) return null;
+    return `${base}/storage/v1/object/public/site-assets/${path}`;
+  } catch {
+    return null;
+  }
+}
+
 /** Nạp cấu hình landing từ Supabase khi Database Mode được bật. */
 export async function loadCloudConfig(
   config: SiteConfig,

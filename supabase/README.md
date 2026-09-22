@@ -7,6 +7,7 @@ Run the SQL files below in Supabase SQL Editor, in this order:
 3. `leads.sql`
 4. `visitor_tracking.sql`
 5. `admin_rls_patch.sql`
+6. `site_assets_storage.sql`
 
 `admin_users.sql` expects the Auth user to already exist. The current allowlist entry is `phuongtung477.tn@gmail.com`.
 

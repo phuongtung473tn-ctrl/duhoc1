@@ -47,6 +47,7 @@ import {
   deleteVisitorSessionHistory,
   clearVisitorSessionHistory,
   summarizeVisitorSessionHistory,
+  uploadConfigImageDataUrl,
 } from "@/services/dataAdapter";
 import { fireTestEvent, type TestEventLog } from "@/lib/tracking";
 import {
@@ -160,8 +161,10 @@ function ExitIntentModal({ onClose }: ModalProps) {
       return;
     }
     normalizeImageUpload(file)
-      .then((image) => {
-        update((d) => (d.exitIntent.imageUrl = image));
+      .then(async (image) => {
+        const storedImage =
+          (await uploadConfigImageDataUrl(image, file.type)) || image;
+        update((d) => (d.exitIntent.imageUrl = storedImage));
       })
       .catch(() => window.alert("Không thể xử lý ảnh popup."));
   }
@@ -5799,6 +5802,11 @@ function LandingEditorModal({ onClose }: ModalProps) {
   }
   function readImageDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
+      const storeOrFallback = (dataUrl: string, contentType: string) => {
+        void uploadConfigImageDataUrl(dataUrl, contentType).then((storedUrl) => {
+          resolve(storedUrl || dataUrl);
+        });
+      };
       const reader = new FileReader();
       reader.onload = () => {
         if (typeof reader.result !== "string") {
@@ -5806,7 +5814,7 @@ function LandingEditorModal({ onClose }: ModalProps) {
           return;
         }
         if (file.type === "image/svg+xml") {
-          resolve(reader.result);
+          storeOrFallback(reader.result, file.type);
           return;
         }
         const image = new Image();
@@ -5821,20 +5829,20 @@ function LandingEditorModal({ onClose }: ModalProps) {
           canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
           const context = canvas.getContext("2d");
           if (!context) {
-            resolve(reader.result as string);
+            storeOrFallback(reader.result as string, file.type);
             return;
           }
           context.drawImage(image, 0, 0);
           canvas.toBlob(
             (blob) => {
               if (!blob) {
-                resolve(reader.result as string);
+                storeOrFallback(reader.result as string, file.type);
                 return;
               }
               const webpReader = new FileReader();
               webpReader.onload = () =>
                 typeof webpReader.result === "string"
-                  ? resolve(webpReader.result)
+                  ? storeOrFallback(webpReader.result, "image/webp")
                   : reject(new Error("invalid webp"));
               webpReader.onerror = () => reject(new Error("webp read failed"));
               webpReader.readAsDataURL(blob);
@@ -5843,7 +5851,7 @@ function LandingEditorModal({ onClose }: ModalProps) {
             Math.min(1, Math.max(0.1, content.imageOptimization.quality)),
           );
         };
-        image.onerror = () => resolve(reader.result as string);
+        image.onerror = () => storeOrFallback(reader.result as string, file.type);
         image.src = reader.result;
       };
       reader.onerror = () => reject(new Error("read failed"));
