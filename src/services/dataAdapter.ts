@@ -287,6 +287,12 @@ export async function saveConfig(config: SiteConfig): Promise<boolean> {
 
   if (config.admin.supabaseUrl && config.admin.supabaseAnonKey) {
     try {
+      if (!getSupabaseAccessToken()) {
+        console.warn(
+          "Supabase config sync skipped: admin access token is missing. Sign in again before saving Database Mode config.",
+        );
+        return false;
+      }
       const synced = await syncConfigToSupabase(config);
       if (synced) return localSaved;
 
@@ -2083,6 +2089,15 @@ async function syncConfigToSupabase(config: SiteConfig): Promise<boolean> {
       data: cloudConfig,
       updated_at: new Date().toISOString(),
     };
+    const payloadBytes = new TextEncoder().encode(
+      JSON.stringify(row),
+    ).byteLength;
+    if (payloadBytes > 4_000_000) {
+      console.warn(
+        `Supabase config sync skipped: landing config is too large (${payloadBytes} bytes). Compress or remove some inline images.`,
+      );
+      return false;
+    }
     const patch = await fetch(`${base}?id=eq.1`, {
       method: "PATCH",
       headers,

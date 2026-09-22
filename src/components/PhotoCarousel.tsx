@@ -64,7 +64,7 @@ export function PhotoCarousel({
             {safeSlides.map((s, idx) => (
               <figure
                 key={`${s.img}-${idx}`}
-                className="min-w-0 w-full shrink-0"
+                className="min-w-0 w-full basis-full shrink-0 overflow-hidden"
               >
                 <button
                   type="button"
