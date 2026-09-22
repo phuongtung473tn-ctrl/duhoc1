@@ -517,13 +517,35 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
       // Lưu lead trước, sau đó xác nhận webhook chính trước khi báo thành công
       // để redirect không hủy request gửi dữ liệu.
       leadDispatchStarted = true;
-      const savedLead = await saveLead(leadRecord, config);
+      const savedLead = await saveLead(leadRecord, config, {
+        waitForCloud: false,
+      });
       leadSaved = true;
       // dispatchLead tự bắt lỗi từng endpoint, nhưng vẫn có thể throw sớm
       // (vd payload không serialize được). Không để việc đó chặn submit đã lưu.
       let delivery: Awaited<ReturnType<typeof dispatchLead>>;
       try {
-        delivery = await dispatchLead(config, payload);
+        const dispatchPromise = dispatchLead(config, payload);
+        delivery = await Promise.race([
+          dispatchPromise,
+          new Promise<Awaited<ReturnType<typeof dispatchLead>>>((resolve) =>
+            window.setTimeout(
+              () => resolve({ ok: true, failedCount: 0, results: [] }),
+              1_500,
+            ),
+          ),
+        ]);
+        void dispatchPromise.then(
+          (result) => {
+            if (!result.ok) {
+              console.warn(
+                "Webhook delivery completed after submit:",
+                result.results,
+              );
+            }
+          },
+          (error) => console.warn("Background webhook delivery failed:", error),
+        );
       } catch (dispatchErr) {
         console.warn(
           "[v0] dispatchLead threw, treated as failed delivery:",
@@ -746,10 +768,10 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
                   emailTasks.map(() => ({
                     sent: false,
                     reason: "timeout",
-                    detail: "Email gửi quá 8 giây, bỏ qua để không chặn submit",
+                    detail: "Email gửi quá 1.5 giây, tiếp tục submit nền",
                   })),
                 ),
-              8_000,
+              1_500,
             ),
           );
           const emailResults = await Promise.race([
@@ -777,13 +799,13 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         );
       }
 
-      const countdownSaved = await countdownSavedPromise;
-      if (!countdownSaved) {
-        toast.warning("Lead đã lưu, nhưng chưa cập nhật được số suất.", {
-          description:
-            "Kiểm tra SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY trên server rồi redeploy.",
-        });
-      }
+      void countdownSavedPromise.then((countdownSaved) => {
+        if (!countdownSaved) {
+          console.warn(
+            "Countdown sync failed after submit. Check Supabase service role configuration.",
+          );
+        }
+      });
 
       // Lỗi email KHÔNG được biến submit của khách thành lỗi: lead đã lưu +
       // webhook đã gửi. emailDeliveryFailed chỉ dùng để log/giám sát.

@@ -1066,6 +1066,7 @@ export async function syncLeadsToSupabase(
 export async function saveLead(
   lead: LeadRecord,
   config?: SiteConfig,
+  options?: { waitForCloud?: boolean },
 ): Promise<LeadRecord> {
   const mode: StorageMode =
     config?.admin.storageMode === "database" ? "database" : "local";
@@ -1073,21 +1074,31 @@ export async function saveLead(
   // Keep the Mini-CRM responsive even while the cloud insert is pending.
   cacheLeadLocally(record);
   if (mode === "database" && config) {
-    const ok = await pushLeadToSupabase(
-      record,
-      config.admin.supabaseUrl,
-      config.admin.supabaseAnonKey,
-    );
-    if (!ok) {
-      record.storage = "local";
-      try {
-        const localLeads = loadLeads().map((item) =>
-          item.id === record.id ? record : item,
-        );
-        window.localStorage.setItem(LEADS_KEY, JSON.stringify(localLeads));
-      } catch {
-        /* local cache is best effort */
+    const syncCloud = async () => {
+      const ok = await pushLeadToSupabase(
+        record,
+        config.admin.supabaseUrl,
+        config.admin.supabaseAnonKey,
+      );
+      if (!ok) {
+        record.storage = "local";
+        try {
+          const localLeads = loadLeads().map((item) =>
+            item.id === record.id ? record : item,
+          );
+          window.localStorage.setItem(LEADS_KEY, JSON.stringify(localLeads));
+        } catch {
+          /* local cache is best effort */
+        }
       }
+      return ok;
+    };
+    if (options?.waitForCloud === false) {
+      void syncCloud().catch((error) =>
+        console.warn("Background lead sync failed:", error),
+      );
+    } else {
+      await syncCloud();
     }
   }
   return record;

@@ -264,10 +264,25 @@ const REQUIRED_LEAD_FIELDS = [
   "email_provider",
   "email_from_configured",
   "email_customer_template",
+  "email_customer_body",
   "email_sales_template",
+  "email_sales_body",
+  "email_customer_cta_label",
+  "email_sales_cta_label",
   "email_customer_cta_url",
   "email_sales_cta_url",
 ] as const;
+
+function normalizeOutboundPayload(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalized = { ...payload };
+  const weights = normalized["sales_distribution_weights"];
+  if (weights && typeof weights === "object") {
+    normalized["sales_distribution_weights"] = JSON.stringify(weights);
+  }
+  return normalized;
+}
 
 function validUrl(value: string): boolean {
   try {
@@ -564,7 +579,7 @@ export async function dispatchLead(
   config: SiteConfig,
   payload: Record<string, unknown>,
 ): Promise<{ ok: boolean; results: WebhookResult[]; failedCount?: number }> {
-  payload = compactPayload(payload);
+  payload = normalizeOutboundPayload(compactPayload(payload));
   const endpoints: WebhookEndpoint[] = [];
 
   const primary = config.form.webhookUrl?.trim();
