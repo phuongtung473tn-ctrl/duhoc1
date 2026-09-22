@@ -13,4 +13,4 @@ Allow: /
 User-agent: *
 Allow: /
 
-Sitemap: https://www.duhoctrungquoc.tech/sitemap.xml
+Sitemap: https://duhoctrungquoc.tech/sitemap.xml
