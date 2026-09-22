@@ -26,6 +26,7 @@ import {
   type LeadRecord,
 } from "@/services/dataAdapter";
 import { sendLeadEmail } from "@/lib/email.functions";
+import { DEPLOYMENT_REVISION } from "@/config/site-config";
 
 export const MAJORS = [
   "Công nghệ Ô tô điện",
@@ -129,16 +130,41 @@ const inputClass =
 
 /** Rate limiting: giới hạn số lần gửi trong 1 cửa sổ thời gian / trình duyệt (cấu hình trong Admin). */
 let rateStamps: number[] = [];
+const RATE_LIMIT_STORAGE_KEY = "funnel_submit_rate_stamps_v1";
+
+function readRateStamps(): number[] {
+  if (typeof window === "undefined") return rateStamps;
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(RATE_LIMIT_STORAGE_KEY) || "[]",
+    ) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is number => typeof value === "number")
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 function rateLimited(maxCount: number, windowMin: number): boolean {
   if (typeof window === "undefined") return false;
   const now = Date.now();
   const windowMs = Math.max(1, windowMin) * 60 * 1000;
-  let stamps = rateStamps;
+  let stamps = [...readRateStamps(), ...rateStamps];
   stamps = stamps.filter((t) => now - t < windowMs);
-  if (stamps.length >= Math.max(1, maxCount)) return true;
+  // Deduplicate timestamps that came from both module memory and storage.
+  stamps = Array.from(new Set(stamps)).sort((a, b) => a - b);
+  if (stamps.length >= Math.max(1, maxCount)) {
+    rateStamps = stamps;
+    return true;
+  }
   stamps.push(now);
   rateStamps = stamps;
+  try {
+    window.localStorage.setItem(RATE_LIMIT_STORAGE_KEY, JSON.stringify(stamps));
+  } catch {
+    // The in-memory limiter still protects the current page if storage fails.
+  }
   return false;
 }
 
@@ -328,11 +354,14 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
           .split(/[;,\n]/)
           .map((item) => item.trim())
           .filter(Boolean);
+      const configuredSalesList = Array.isArray(
+        config.emailAutomation.salesEmailList,
+      )
+        ? config.emailAutomation.salesEmailList
+        : parseSalesList(String(config.emailAutomation.salesEmailList || ""));
       const salesRecipients =
-        config.emailAutomation.salesEmailList.length > 0
-          ? config.emailAutomation.salesEmailList
-              .map((item) => item.trim())
-              .filter(Boolean)
+        configuredSalesList.length > 0
+          ? configuredSalesList.map((item) => item.trim()).filter(Boolean)
           : parseSalesList(config.emailAutomation.notifyEmail);
       const salesWeights = Object.fromEntries(
         Object.entries(
@@ -349,6 +378,7 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
 
       const payload = {
         event: "lead_created",
+        deployment_revision: DEPLOYMENT_REVISION,
         webhook_delivery_id: webhookDeliveryId,
         idempotency_key: idempotencyKey,
         sale_align: selectedSaleRecipient,
@@ -402,6 +432,15 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         behavior_summary: visitorBehaviorPayload.behaviorSummary,
         device_tech_info: visitorBehaviorPayload.deviceTechInfo,
         traffic_ads_source: visitorBehaviorPayload.trafficAdsSource,
+        sales_distribution_weights: salesWeights,
+        sales_send_webhook: Boolean(config.emailAutomation.salesSendWebhook),
+        email_automation_enabled: config.emailAutomation.enabled,
+        email_provider: config.emailAutomation.provider,
+        email_from_configured: Boolean(config.emailAutomation.fromEmail.trim()),
+        email_customer_template: config.emailAutomation.subject,
+        email_sales_template: config.emailAutomation.notifySubject,
+        email_customer_cta_url: config.emailAutomation.customerCtaUrl,
+        email_sales_cta_url: config.emailAutomation.salesCtaUrl,
       };
 
       // Lưu Mini-CRM (localStorage / Supabase) để hiện trong bảng Quản Lý Lead.
@@ -420,6 +459,12 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         recommendedAction: assessment.recommendedAction,
         behaviorSummary: payload.behavior_summary,
         saleAdvice: payload.sale_advice,
+        saleAlign: selectedSaleRecipient,
+        saleAssignedTo: selectedSaleRecipient,
+        salesEmailRecipients: salesRecipients.join(", "),
+        salesDistributionMode: config.emailAutomation.salesDistributionMode,
+        salesDistributionWeights: salesWeights,
+        salesSendWebhook: Boolean(config.emailAutomation.salesSendWebhook),
         deviceTechInfo: payload.device_tech_info,
         trafficAdsSource: payload.traffic_ads_source,
         networkProvider: payload.network_provider || undefined,
@@ -527,18 +572,18 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
           "Database mode fallback to local storage: Supabase cloud sync unavailable; lead was still saved locally.",
         );
       }
-      void decrementCountdown(savedLead.id)
-        .then((countdownSaved) => {
-          if (!countdownSaved) {
-            toast.warning("Lead đã lưu, nhưng chưa cập nhật được số suất.", {
-              description:
-                "Kiểm tra SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY trên server rồi redeploy.",
-            });
-          }
-        })
-        .catch((countdownErr) => {
+      const countdownSaved = await decrementCountdown(savedLead.id).catch(
+        (countdownErr) => {
           console.warn("[v0] decrementCountdown failed:", countdownErr);
+          return false;
+        },
+      );
+      if (!countdownSaved) {
+        toast.warning("Lead đã lưu, nhưng chưa cập nhật được số suất.", {
+          description:
+            "Kiểm tra SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY trên server rồi redeploy.",
         });
+      }
 
       // Ghi nhận chuyển đổi cho Analytics Dashboard + A/B comparison.
       // Lỗi tracking (vd localStorage đầy) không được chặn luồng submit.
