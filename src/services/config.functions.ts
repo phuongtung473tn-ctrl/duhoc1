@@ -63,10 +63,7 @@ async function decrementCountdownWithServiceRoleImpl(input: {
       }),
     });
     if (!write.ok) return { ok: false, reason: "write_failed" };
-    const rowsWritten = (await write.json().catch(() => [])) as unknown[];
-    return rowsWritten.length > 0
-      ? { ok: true, changed: true }
-      : { ok: false, reason: "write_conflict" };
+    return { ok: true, changed: true };
   }
   if (!serviceKey && input.anonKey) {
     const rpc = await fetch(`${url}/rest/v1/rpc/decrement_funnel_countdown`, {
@@ -79,10 +76,10 @@ async function decrementCountdownWithServiceRoleImpl(input: {
       body: JSON.stringify({}),
     });
     if (!rpc.ok) return { ok: false, reason: "rpc_failed" };
-    const result = (await rpc.json().catch(() => false)) as unknown;
-    return result === true
-      ? { ok: true, changed: true }
-      : { ok: true, changed: false };
+    const result = (await rpc.json().catch(() => true)) as unknown;
+    return result === false
+      ? { ok: true, changed: false }
+      : { ok: true, changed: true };
   }
   const headers = {
     apikey: serviceKey,

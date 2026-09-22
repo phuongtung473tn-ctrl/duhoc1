@@ -149,12 +149,18 @@ function readRateStamps(): number[] {
 function rateLimited(maxCount: number, windowMin: number): boolean {
   if (typeof window === "undefined") return false;
   const now = Date.now();
-  const windowMs = Math.max(1, windowMin) * 60 * 1000;
+  const safeMaxCount = Number.isFinite(Number(maxCount))
+    ? Math.max(1, Math.floor(Number(maxCount)))
+    : 3;
+  const safeWindowMin = Number.isFinite(Number(windowMin))
+    ? Math.max(1, Number(windowMin))
+    : 5;
+  const windowMs = safeWindowMin * 60 * 1000;
   let stamps = [...readRateStamps(), ...rateStamps];
   stamps = stamps.filter((t) => now - t < windowMs);
   // Deduplicate timestamps that came from both module memory and storage.
   stamps = Array.from(new Set(stamps)).sort((a, b) => a - b);
-  if (stamps.length >= Math.max(1, maxCount)) {
+  if (stamps.length >= safeMaxCount) {
     rateStamps = stamps;
     return true;
   }
