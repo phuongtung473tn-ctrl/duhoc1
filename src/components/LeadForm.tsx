@@ -388,7 +388,7 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         sale_align: selectedSaleRecipient,
         sale_assigned_to: selectedSaleRecipient,
         sales_distribution_mode: config.emailAutomation.salesDistributionMode,
-        sales_email_recipients: allSalesRecipients.join(", "),
+        sales_email_recipients: salesRecipients.join(", "),
         notify_email: notificationRecipients.join(", "),
         notify_email_configured: notificationRecipients.length > 0,
         notification_recipient_count: notificationRecipients.length,
@@ -705,7 +705,10 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
             return `<div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;padding:28px 24px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;color:#0f172a;line-height:1.7"><div style="display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid #e2e8f0;margin-bottom:16px;">${brandMarkup}<div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;font-weight:700;">${escapeHtml(brandName)}</div></div>${bodyHtml}<div style="margin-top:18px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:center;"><a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;">${escapeHtml(ctaLabel)}</a></div></div>`;
           };
           const emailRecipients = Array.from(
-            new Set([...salesRecipients, ...notificationRecipients]),
+            new Set([
+              ...(selectedSaleRecipient ? [selectedSaleRecipient] : []),
+              ...notificationRecipients,
+            ]),
           );
 
           // Email cảm ơn gửi tới khách (nếu khách cung cấp email)

@@ -195,7 +195,7 @@ test("buildVisitorBehaviorPayload can read session phone state without crashing"
   assert.equal(payload.behavior.session_phone_hint, "0912345678");
 });
 
-test("decrementCountdownWithServiceRole creates a countdown row when config is missing", async () => {
+test("decrementCountdownWithServiceRole refuses to invent a countdown when config is missing", async () => {
   const calls: Array<{ method: string; url: string; body?: string }> = [];
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -230,14 +230,11 @@ test("decrementCountdownWithServiceRole creates a countdown row when config is m
     data: { url: "https://example.supabase.co" },
   });
 
-  assert.deepEqual(result, { ok: true, changed: true });
-  assert.ok(
-    calls.some(
-      (call) =>
-        call.method === "PATCH" &&
-        call.url.includes("/rest/v1/funnel_configs?id=eq.1") &&
-        String(call.body ?? "").includes('"slotsLeft":11'),
-    ),
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "missing_service_key");
+  assert.equal(
+    calls.some((call) => call.method === "PATCH"),
+    false,
   );
 });
 

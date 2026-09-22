@@ -18,6 +18,7 @@ async function decrementCountdownWithServiceRoleImpl(input: {
 }): Promise<{ ok: boolean; changed?: boolean; reason?: string }> {
   const url = input.url.replace(/\/$/, "");
   const serviceKey = process.env["SUPABASE_SERVICE_ROLE_KEY"] || "";
+  if (!serviceKey) return { ok: false, reason: "missing_service_key" };
   const headers = {
     apikey: serviceKey,
     Authorization: serviceKey ? `Bearer ${serviceKey}` : "",
@@ -36,7 +37,13 @@ async function decrementCountdownWithServiceRoleImpl(input: {
     const dataRow = rows[0]?.data;
     const countdown = dataRow?.["countdown"] as
       Record<string, unknown> | undefined;
-    const currentSlots = Number(countdown?.["slotsLeft"] ?? 12);
+    if (!countdown || typeof countdown["slotsLeft"] === "undefined") {
+      return { ok: false, reason: "countdown_not_configured" };
+    }
+    const currentSlots = Number(countdown["slotsLeft"]);
+    if (!Number.isFinite(currentSlots)) {
+      return { ok: false, reason: "invalid_slots" };
+    }
     if (currentSlots <= 0) return { ok: true, changed: false };
     const nextData = structuredClone(
       (dataRow ?? {}) as Record<string, unknown>,
