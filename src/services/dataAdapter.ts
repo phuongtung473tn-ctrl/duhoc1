@@ -522,7 +522,7 @@ create policy "visitor sessions can be created by public form" on public.visitor
 drop policy if exists "visitor sessions can be counted by public form" on public.visitor_sessions;
 create policy "visitor sessions can be counted by public form" on public.visitor_sessions for select to authenticated;
 
-drop function if exists public.record_visitor_session(text, text, text, text, text, text, text, text, text, text);
+drop function if exists public.record_visitor_session(text, text, text, text, text, text, text, text, text, text, text);
 create or replace function public.record_visitor_session(p_id text, p_visitor_id text, p_source text default null, p_medium text default null, p_campaign text default null, p_content text default null, p_device_model text default null, p_device_kind text default null, p_os text default null, p_browser text default null, p_variant text default null)
 returns table(today_count bigint, month_count bigint) language plpgsql security definer set search_path = public as $$
 begin

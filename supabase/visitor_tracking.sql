@@ -30,7 +30,9 @@ create policy "visitor sessions can be counted by public form"
 	on public.visitor_sessions for select
 	to authenticated;
 
-drop function if exists public.record_visitor_session(text, text, text, text, text, text, text, text, text, text);
+drop function if exists public.record_visitor_session(
+	text, text, text, text, text, text, text, text, text, text, text
+);
 
 create or replace function public.record_visitor_session(
 	p_id text,
