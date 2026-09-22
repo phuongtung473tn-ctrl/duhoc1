@@ -103,54 +103,43 @@ security definer
 set search_path = public
 as $$
 declare
-	result jsonb := jsonb_build_object(
-		'visits', (select count(*) from public.visitor_sessions),
-		'leads', (select count(*) from public.leads),
-		'bySource', '{}'::jsonb,
-		'bySourceStats', '{}'::jsonb,
-		'byVariant', '{}'::jsonb
-	);
-	item record;
-	source_name text;
-	visit_count bigint;
-	lead_count bigint;
-	variant_name text;
-	variant_visit_count bigint;
-	variant_lead_count bigint;
+	result jsonb;
 begin
 	if not public.is_funnel_admin() then
 		raise exception 'admin access required';
 	end if;
-	for item in
-		select coalesce(nullif(source, ''), 'direct') as source_name, count(*) as visit_count
-		from public.visitor_sessions group by 1
-	loop
-		source_name := item.source_name;
-		visit_count := item.visit_count;
-		select count(*) into lead_count from public.leads
-		where coalesce(nullif(utm_source, ''), nullif(traffic_ads_source, ''), 'direct') = source_name;
-		result := jsonb_set(result, array['bySource', source_name], to_jsonb(visit_count), true);
-		result := jsonb_set(result, array['bySourceStats', source_name], jsonb_build_object('visits', visit_count, 'leads', lead_count), true);
-	end loop;
-	for item in
-		select variant, count(*) as visit_count
-		from public.visitor_sessions where nullif(variant, '') is not null group by 1
-	loop
-		variant_name := item.variant;
-		variant_visit_count := item.visit_count;
-		select count(*) into variant_lead_count from public.leads where variant = variant_name;
-		result := jsonb_set(result, array['byVariant', variant_name], jsonb_build_object('visits', variant_visit_count, 'leads', variant_lead_count), true);
-	end loop;
-	for item in
-		select variant, count(*) as lead_count
-		from public.leads where nullif(variant, '') is not null group by 1
-	loop
-		variant_name := item.variant;
-		variant_lead_count := item.lead_count;
-		if not (result->'byVariant' ? variant_name) then
-			result := jsonb_set(result, array['byVariant', variant_name], jsonb_build_object('visits', 0, 'leads', variant_lead_count), true);
-		end if;
-	end loop;
+	select jsonb_build_object(
+		'visits', (select count(*) from public.visitor_sessions),
+		'leads', (select count(*) from public.leads),
+		'bySource', coalesce((select jsonb_object_agg(source_name, visit_count) from (
+			select coalesce(nullif(source, ''), 'direct') source_name, count(*) visit_count
+			from public.visitor_sessions group by 1
+		) visits), '{}'::jsonb),
+		'bySourceStats', coalesce((select jsonb_object_agg(source_name, jsonb_build_object('visits', visits, 'leads', leads)) from (
+			select source_name, count(*) filter (where kind = 'visit') visits, count(*) filter (where kind = 'lead') leads
+			from (
+				select coalesce(nullif(source, ''), 'direct') source_name, 'visit' kind from public.visitor_sessions
+				union all
+				select coalesce(nullif(utm_source, ''), nullif(traffic_ads_source, ''), 'direct') source_name, 'lead' kind from public.leads
+			) sources group by source_name
+		) stats), '{}'::jsonb),
+		'byVariant', coalesce((select jsonb_object_agg(variant_name, jsonb_build_object('visits', visits, 'leads', leads)) from (
+			select variant_name, count(*) filter (where kind = 'visit') visits, count(*) filter (where kind = 'lead') leads
+			from (
+				select nullif(variant, '') variant_name, 'visit' kind from public.visitor_sessions where nullif(variant, '') is not null
+				union all
+				select nullif(variant, '') variant_name, 'lead' kind from public.leads where nullif(variant, '') is not null
+			) variants group by variant_name
+		) variant_stats), '{}'::jsonb),
+		'daily', coalesce((select jsonb_object_agg(day_key, jsonb_build_object('date', day_key, 'visits', visits, 'leads', leads, 'bySource', '{}'::jsonb, 'bySourceStats', '{}'::jsonb, 'byVariant', '{}'::jsonb)) from (
+			select day_key, count(*) filter (where kind = 'visit') visits, count(*) filter (where kind = 'lead') leads
+			from (
+				select visited_day::text day_key, 'visit' kind from public.visitor_sessions
+				union all
+				select created_at::date::text day_key, 'lead' kind from public.leads
+			) days group by day_key
+		) daily_stats), '{}'::jsonb)
+	) into result;
 	return query select result;
 end;
 $$;

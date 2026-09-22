@@ -1555,11 +1555,16 @@ export interface CloudAnalyticsResult {
 }
 
 function aggregateCloudAnalytics(
-  sessions: Array<{ source?: string | null; variant?: string | null }>,
+  sessions: Array<{
+    source?: string | null;
+    variant?: string | null;
+    visited_day?: string | null;
+  }>,
   leads: Array<{
     utm_source?: string | null;
     traffic_ads_source?: string | null;
     variant?: string | null;
+    created_at?: string | null;
   }>,
 ): AnalyticsState {
   const aggregate = emptyAnalytics();
@@ -1580,6 +1585,13 @@ function aggregateCloudAnalytics(
       };
       aggregate.byVariant[variant].visits += 1;
     }
+    incrementDayBucket(
+      aggregate,
+      (session.visited_day || new Date().toISOString()).slice(0, 10),
+      "visit",
+      source,
+      variant || undefined,
+    );
   }
   for (const lead of leads) {
     const source = cleanSource(
@@ -1598,6 +1610,13 @@ function aggregateCloudAnalytics(
       });
       bucket.leads += 1;
     }
+    incrementDayBucket(
+      aggregate,
+      (lead.created_at || new Date().toISOString()).slice(0, 10),
+      "lead",
+      source,
+      lead.variant || undefined,
+    );
   }
   return aggregate;
 }
@@ -1776,6 +1795,21 @@ function normalizeAnalytics(
 
 export function loadAnalytics(): AnalyticsState {
   if (!isBrowser()) return emptyAnalytics();
+  const config = loadConfig();
+  if (config.admin.storageMode === "database") {
+    if (cloudAnalyticsState) return structuredClone(cloudAnalyticsState);
+    const fallback = window.localStorage.getItem(ANALYTICS_KEY);
+    if (fallback) {
+      try {
+        return normalizeAnalytics(
+          JSON.parse(fallback) as Partial<AnalyticsState>,
+        );
+      } catch {
+        return emptyAnalytics();
+      }
+    }
+    return emptyAnalytics();
+  }
   const raw = window.localStorage.getItem(ANALYTICS_KEY);
   if (raw) {
     try {
@@ -1784,22 +1818,11 @@ export function loadAnalytics(): AnalyticsState {
       return emptyAnalytics();
     }
   }
-  if (loadConfig().admin.storageMode === "database") {
-    return cloudAnalyticsState
-      ? structuredClone(cloudAnalyticsState)
-      : emptyAnalytics();
-  }
   return emptyAnalytics();
 }
 
 function saveAnalytics(state: AnalyticsState): void {
   if (!isBrowser()) return;
-  const config = loadConfig();
-  if (config.admin.storageMode === "database") {
-    // Database Mode lấy số liệu từ visitor_sessions và leads. Không phát
-    // state local rỗng để ghi đè kết quả cloud trong Admin Analytics.
-    return;
-  }
   window.localStorage.setItem(ANALYTICS_KEY, JSON.stringify(state));
   window.dispatchEvent(
     new CustomEvent<AnalyticsState>(ANALYTICS_UPDATED_EVENT, { detail: state }),
@@ -1899,13 +1922,13 @@ export async function loadCloudAnalytics(
       if (initialStatus === 404) {
         const [sessionsResponse, leadsResponse] = await Promise.all([
           fetch(
-            `${base}/rest/v1/visitor_sessions?select=source,variant&limit=5000`,
+            `${base}/rest/v1/visitor_sessions?select=source,variant,visited_day&limit=5000`,
             {
               headers,
             },
           ),
           fetch(
-            `${base}/rest/v1/leads?select=utm_source,traffic_ads_source,variant&limit=5000`,
+            `${base}/rest/v1/leads?select=utm_source,traffic_ads_source,variant,created_at&limit=5000`,
             { headers },
           ),
         ]);
@@ -1913,11 +1936,13 @@ export async function loadCloudAnalytics(
           const sessions = (await sessionsResponse.json()) as Array<{
             source?: string | null;
             variant?: string | null;
+            visited_day?: string | null;
           }>;
           const leads = (await leadsResponse.json()) as Array<{
             utm_source?: string | null;
             traffic_ads_source?: string | null;
             variant?: string | null;
+            created_at?: string | null;
           }>;
           cloudAnalyticsState = aggregateCloudAnalytics(sessions, leads);
           return { data: structuredClone(cloudAnalyticsState) };
