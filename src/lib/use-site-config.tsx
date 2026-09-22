@@ -120,7 +120,10 @@ export function SiteConfigProvider({ children }: { children: ReactNode }) {
       return true;
     }
     const serverSaved = await decrementCountdownWithServiceRole({
-      data: { url: nextConfig.admin.supabaseUrl },
+      data: {
+        url: nextConfig.admin.supabaseUrl,
+        anonKey: nextConfig.admin.supabaseAnonKey,
+      },
     });
     if (!serverSaved.ok) {
       handledCountdownLeads.current.delete(leadId);

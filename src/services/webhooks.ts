@@ -290,6 +290,18 @@ function normalizeOutboundPayload(
   if (weights && typeof weights === "object") {
     normalized["sales_distribution_weights"] = JSON.stringify(weights);
   }
+  for (const field of [
+    "sale_align",
+    "sale_assigned_to",
+    "sales_distribution_mode",
+    "sales_email_recipients",
+    "sales_distribution_weights",
+  ]) {
+    if (!(field in normalized)) normalized[field] = "";
+    if (typeof normalized[field] !== "string") {
+      normalized[field] = String(normalized[field] ?? "");
+    }
+  }
   return normalized;
 }
 

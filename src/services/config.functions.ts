@@ -11,14 +11,33 @@ const saveSchema = z.object({
 
 const countdownSchema = z.object({
   url: z.string().url(),
+  anonKey: z.string().min(1).optional(),
 });
 
 async function decrementCountdownWithServiceRoleImpl(input: {
   url: string;
+  anonKey?: string;
 }): Promise<{ ok: boolean; changed?: boolean; reason?: string }> {
   const url = input.url.replace(/\/$/, "");
   const serviceKey = process.env["SUPABASE_SERVICE_ROLE_KEY"] || "";
-  if (!serviceKey) return { ok: false, reason: "missing_service_key" };
+  if (!serviceKey && !input.anonKey)
+    return { ok: false, reason: "missing_supabase_key" };
+  if (!serviceKey && input.anonKey) {
+    const rpc = await fetch(`${url}/rest/v1/rpc/decrement_funnel_countdown`, {
+      method: "POST",
+      headers: {
+        apikey: input.anonKey,
+        Authorization: `Bearer ${input.anonKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    if (!rpc.ok) return { ok: false, reason: "rpc_failed" };
+    const result = (await rpc.json().catch(() => false)) as unknown;
+    return result === true
+      ? { ok: true, changed: true }
+      : { ok: true, changed: false };
+  }
   const headers = {
     apikey: serviceKey,
     Authorization: serviceKey ? `Bearer ${serviceKey}` : "",
@@ -156,7 +175,7 @@ export const saveConfigWithSupabaseAuth = createServerFn({ method: "POST" })
   });
 
 export async function decrementCountdownWithServiceRole(input: {
-  data: { url: string };
+  data: { url: string; anonKey?: string };
 }): Promise<{ ok: boolean; changed?: boolean; reason?: string }> {
   const parsed = countdownSchema.safeParse(input.data);
   if (!parsed.success) {
@@ -167,7 +186,9 @@ export async function decrementCountdownWithServiceRole(input: {
     /\/$/,
     "",
   );
-  return decrementCountdownWithServiceRoleImpl({ url });
+  return decrementCountdownWithServiceRoleImpl(
+    parsed.data.anonKey ? { url, anonKey: parsed.data.anonKey } : { url },
+  );
 }
 
 export const decrementCountdownWithServiceRoleServer = createServerFn({
@@ -175,7 +196,14 @@ export const decrementCountdownWithServiceRoleServer = createServerFn({
 })
   .validator((input) => countdownSchema.parse(input))
   .handler(async ({ data }) => {
-    return decrementCountdownWithServiceRoleImpl({
-      url: (process.env["SUPABASE_URL"] || data.url).replace(/\/$/, ""),
-    });
+    return decrementCountdownWithServiceRoleImpl(
+      data.anonKey
+        ? {
+            url: (process.env["SUPABASE_URL"] || data.url).replace(/\/$/, ""),
+            anonKey: data.anonKey,
+          }
+        : {
+            url: (process.env["SUPABASE_URL"] || data.url).replace(/\/$/, ""),
+          },
+    );
   });

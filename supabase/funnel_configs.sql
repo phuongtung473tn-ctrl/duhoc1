@@ -91,6 +91,32 @@ create policy "funnel configs can be updated" on public.funnel_configs for updat
   using (id = 1 and public.is_funnel_admin())
   with check (id = 1 and public.is_funnel_admin());
 
+-- Atomic public decrement used after a successful lead submission.
+create or replace function public.decrement_funnel_countdown()
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.funnel_configs
+  set data = jsonb_set(
+    data,
+    '{countdown,slotsLeft}',
+    to_jsonb(((data->'countdown'->>'slotsLeft')::integer) - 1),
+    true
+  ),
+  updated_at = now()
+  where id = 1
+    and coalesce((data->'countdown'->>'enabled')::boolean, false) = true
+    and coalesce((data->'countdown'->>'autoDecrement')::boolean, false) = true
+    and coalesce((data->'countdown'->>'slotsLeft')::integer, 0) > 0;
+  return found;
+end;
+$$;
+revoke all on function public.decrement_funnel_countdown() from public;
+grant execute on function public.decrement_funnel_countdown() to anon, authenticated;
+
 create table if not exists public.funnel_analytics (
   id bigint primary key,
   data jsonb not null,

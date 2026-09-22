@@ -118,6 +118,32 @@ create policy "funnel analytics can be updated"
     and public.is_funnel_admin()
   );
 
+-- Atomic countdown decrement for successful public lead submissions.
+create or replace function public.decrement_funnel_countdown()
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.funnel_configs
+  set data = jsonb_set(
+    data,
+    '{countdown,slotsLeft}',
+    to_jsonb(((data->'countdown'->>'slotsLeft')::integer) - 1),
+    true
+  ),
+  updated_at = now()
+  where id = 1
+    and coalesce((data->'countdown'->>'enabled')::boolean, false) = true
+    and coalesce((data->'countdown'->>'autoDecrement')::boolean, false) = true
+    and coalesce((data->'countdown'->>'slotsLeft')::integer, 0) > 0;
+  return found;
+end;
+$$;
+revoke all on function public.decrement_funnel_countdown() from public;
+grant execute on function public.decrement_funnel_countdown() to anon, authenticated;
+
 -- Ensure the aggregate row exists for the Admin analytics screen.
 insert into public.funnel_analytics (id, data, updated_at)
 values (
