@@ -347,7 +347,7 @@ export async function saveConfig(config: SiteConfig): Promise<boolean> {
           copy.tracking.tiktokAccessToken = "";
           return JSON.stringify(copy);
         };
-        return localSaved && comparable(cloud) === comparable(config);
+        return comparable(cloud) === comparable(config);
       }
       return false;
     } catch {

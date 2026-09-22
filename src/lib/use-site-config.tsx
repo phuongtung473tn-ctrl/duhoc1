@@ -90,7 +90,7 @@ export function SiteConfigProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const save = useCallback(async () => {
-    const saved = await saveConfig(config);
+    const saved = await saveConfig(configRef.current);
     if (saved) {
       dirtyRef.current = false;
       setDirty(false);
