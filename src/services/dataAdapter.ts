@@ -12,7 +12,6 @@ import {
   type StorageMode,
 } from "@/config/site-config";
 import type { VisitorBehaviorPayload } from "@/types/visitor-tracking";
-import { relayWebhook } from "@/services/webhook.functions";
 import { getSupabaseAccessToken } from "@/lib/supabase-auth";
 import { saveConfigWithSupabaseAuth } from "@/services/config.functions";
 
@@ -1157,7 +1156,14 @@ async function pushLeadToSupabase(
       Authorization: `Bearer ${bearer(key)}`,
       Prefer: "return=minimal",
     };
+    const stableId =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        lead.id,
+      )
+        ? lead.id
+        : undefined;
     const row = {
+      ...(stableId ? { id: stableId } : {}),
       name: lead.name,
       phone: lead.phone,
       email: lead.email ?? null,
@@ -1206,21 +1212,8 @@ async function pushLeadToSupabase(
       visitor_behavior_payload: lead.visitorBehaviorPayload ?? null,
       created_at: lead.at,
     };
-    try {
-      const relay = await Promise.race([
-        relayWebhook({
-          data: { endpoint, body: [row], headers },
-        }),
-        new Promise<null>((resolve) =>
-          window.setTimeout(() => resolve(null), 2_000),
-        ),
-      ]);
-      if (relay && relay.ok) return true;
-    } catch {
-      // TanStack server runtime may not be available in tests or non-SSR contexts.
-      // Fall through to the direct fetch below as the real transport.
-    }
-
+    // Use one request only. A relay timeout followed by a direct retry can
+    // create duplicate rows when the first request already reached Supabase.
     const res = await fetch(endpoint, {
       method: "POST",
       headers,

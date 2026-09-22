@@ -457,7 +457,10 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
 
       // Lưu Mini-CRM (localStorage / Supabase) để hiện trong bảng Quản Lý Lead.
       const leadRecord: LeadRecord = {
-        id: `ld_${Date.now()}`,
+        id:
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `ld_${Date.now()}_${phone}`,
         at: payload.created_at,
         name: payload.full_name,
         phone: payload.phone,
