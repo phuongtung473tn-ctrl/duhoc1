@@ -363,6 +363,12 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         configuredSalesList.length > 0
           ? configuredSalesList.map((item) => item.trim()).filter(Boolean)
           : parseSalesList(config.emailAutomation.notifyEmail);
+      const notificationRecipients = parseSalesList(
+        config.emailAutomation.notifyEmail,
+      );
+      const allSalesRecipients = Array.from(
+        new Set([...salesRecipients, ...notificationRecipients]),
+      );
       const salesWeights = Object.fromEntries(
         Object.entries(
           config.emailAutomation.salesDistributionWeights || {},
@@ -384,7 +390,8 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         sale_align: selectedSaleRecipient,
         sale_assigned_to: selectedSaleRecipient,
         sales_distribution_mode: config.emailAutomation.salesDistributionMode,
-        sales_email_recipients: salesRecipients.join(", "),
+        sales_email_recipients: allSalesRecipients.join(", "),
+        notify_email: notificationRecipients.join(", "),
         full_name: name.slice(0, 100),
         phone,
         email: email.slice(0, 255),
@@ -465,7 +472,7 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         saleAdvice: payload.sale_advice,
         saleAlign: selectedSaleRecipient,
         saleAssignedTo: selectedSaleRecipient,
-        salesEmailRecipients: salesRecipients.join(", "),
+        salesEmailRecipients: allSalesRecipients.join(", "),
         salesDistributionMode: config.emailAutomation.salesDistributionMode,
         salesDistributionWeights: salesWeights,
         salesSendWebhook: Boolean(config.emailAutomation.salesSendWebhook),
@@ -696,11 +703,9 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
               : "";
             return `<div style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;padding:28px 24px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;color:#0f172a;line-height:1.7"><div style="display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid #e2e8f0;margin-bottom:16px;">${brandMarkup}<div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;font-weight:700;">${escapeHtml(brandName)}</div></div>${bodyHtml}<div style="margin-top:18px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:center;"><a href="${escapeHtml(ctaUrl)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;">${escapeHtml(ctaLabel)}</a></div></div>`;
           };
-          const directNotify = config.emailAutomation.notifyEmail.trim();
-          const saleRecipients =
-            salesRecipients.length > 0
-              ? salesRecipients
-              : parseSalesList(directNotify);
+          const emailRecipients = Array.from(
+            new Set([...allSalesRecipients, ...notificationRecipients]),
+          );
 
           // Email cảm ơn gửi tới khách (nếu khách cung cấp email)
           if (email) {
@@ -722,29 +727,12 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
             );
           }
 
-          if (selectedSaleRecipient) {
+          for (const recipient of emailRecipients) {
             emailTasks.push(
               safeSendLeadEmail({
                 data: {
                   provider: config.emailAutomation.provider,
-                  to: selectedSaleRecipient,
-                  from: config.emailAutomation.fromEmail,
-                  subject: fill(config.emailAutomation.notifySubject),
-                  text: `${fill(config.emailAutomation.notifyBody)}\n\n${fill(config.emailAutomation.salesCtaLabel || "Mở lead trong CRM")}: ${resolveCtaUrl(config.emailAutomation.salesCtaUrl || config.emailAutomation.ctaUrl)}`,
-                  html: htmlBody(config.emailAutomation.notifyBody, "sales"),
-                  resendApiKey: config.emailAutomation.resendApiKey,
-                  gmailClientId: config.emailAutomation.gmailClientId,
-                  gmailClientSecret: config.emailAutomation.gmailClientSecret,
-                  gmailRefreshToken: config.emailAutomation.gmailRefreshToken,
-                },
-              }),
-            );
-          } else if (directNotify) {
-            emailTasks.push(
-              safeSendLeadEmail({
-                data: {
-                  provider: config.emailAutomation.provider,
-                  to: directNotify,
+                  to: recipient,
                   from: config.emailAutomation.fromEmail,
                   subject: fill(config.emailAutomation.notifySubject),
                   text: `${fill(config.emailAutomation.notifyBody)}\n\n${fill(config.emailAutomation.salesCtaLabel || "Mở lead trong CRM")}: ${resolveCtaUrl(config.emailAutomation.salesCtaUrl || config.emailAutomation.ctaUrl)}`,

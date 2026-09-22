@@ -119,6 +119,7 @@ function writePayload(payload) {
       "sale_assigned_to",
       "sales_distribution_mode",
       "sales_email_recipients",
+      "notify_email",
       "sales_distribution_weights",
       "sales_send_webhook",
       "email_automation_enabled",

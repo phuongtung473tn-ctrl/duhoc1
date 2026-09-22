@@ -202,6 +202,7 @@ export const WEBHOOK_FIELD_OPTIONS = [
   ["sale_assigned_to", "Email sale được gán"],
   ["sales_distribution_mode", "Chế độ chia sale"],
   ["sales_email_recipients", "Danh sách sale tham gia chia"],
+  ["notify_email", "Email nhận thông báo lead mới"],
   ["sales_distribution_weights", "Trọng số phân phối sale"],
   ["sales_send_webhook", "Bật webhook gán sale"],
   ["email_automation_enabled", "Bật tự động hóa email"],
