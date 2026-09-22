@@ -5598,6 +5598,9 @@ function LandingEditorModal({ onClose }: ModalProps) {
   const [footerLogoError, setFooterLogoError] = useState("");
   const [heroMediaError, setHeroMediaError] = useState("");
   const [graduationError, setGraduationError] = useState("");
+  const [landingSaveMessage, setLandingSaveMessage] = useState<string | null>(
+    null,
+  );
   const [templateType, setTemplateType] = useState("promo");
   const updateLines = (
     key: "heroTrustItems" | "pains" | "galleryCaptions",
@@ -5776,19 +5779,20 @@ function LandingEditorModal({ onClose }: ModalProps) {
           reject(new Error("invalid image"));
           return;
         }
-        if (
-          !content.imageOptimization.convertUploadsToWebp ||
-          file.type === "image/webp" ||
-          file.type === "image/svg+xml"
-        ) {
+        if (file.type === "image/svg+xml") {
           resolve(reader.result);
           return;
         }
         const image = new Image();
         image.onload = () => {
+          const maxDimension = 1800;
+          const scale = Math.min(
+            1,
+            maxDimension / Math.max(image.naturalWidth, image.naturalHeight),
+          );
           const canvas = document.createElement("canvas");
-          canvas.width = image.naturalWidth;
-          canvas.height = image.naturalHeight;
+          canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
           const context = canvas.getContext("2d");
           if (!context) {
             resolve(reader.result as string);
@@ -6145,7 +6149,14 @@ function LandingEditorModal({ onClose }: ModalProps) {
           Khôi phục
         </button>
         <button
-          onClick={() => save()}
+          onClick={async () => {
+            const saved = await save();
+            setLandingSaveMessage(
+              saved
+                ? "Đã lưu landing và đồng bộ Supabase."
+                : "Đã lưu local nhưng chưa đồng bộ được Supabase.",
+            );
+          }}
           className="rounded-lg bg-emerald-600 px-2 py-2 text-xs font-bold text-white"
         >
           Lưu ngay
@@ -6162,6 +6173,11 @@ function LandingEditorModal({ onClose }: ModalProps) {
           }}
         />
       </div>
+      {landingSaveMessage && (
+        <p className="mb-3 text-[11px] font-semibold text-sky-700">
+          {landingSaveMessage}
+        </p>
+      )}
       <div className="mb-4 space-y-2 rounded-xl border border-neutral-200 p-3 dark:border-white/10">
         <p className="text-xs font-bold">Bảo vệ & tối ưu ảnh</p>
         <Toggle
@@ -7143,18 +7159,7 @@ function LandingEditorModal({ onClose }: ModalProps) {
                 );
                 if (files.length === 0) return;
                 Promise.all(
-                  files.map(
-                    (f) =>
-                      new Promise<string>((resolve, reject) => {
-                        const r = new FileReader();
-                        r.onload = () =>
-                          typeof r.result === "string"
-                            ? resolve(r.result)
-                            : reject(new Error("invalid"));
-                        r.onerror = () => reject(new Error("read failed"));
-                        r.readAsDataURL(f);
-                      }),
-                  ),
+                  files.map((file) => normalizeImageUpload(file)),
                 ).then((images) => {
                   update((d) => {
                     const s = d.landing.gallerySliders[si]!;

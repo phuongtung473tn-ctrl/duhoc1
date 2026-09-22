@@ -320,7 +320,22 @@ function compactPayload(payload: Record<string, unknown>) {
     return payload;
   }
   const compact = { ...payload };
-  delete compact["visitor_behavior_payload"];
+  for (const field of [
+    "visitor_behavior_payload",
+    "utm_params",
+    "raw_query",
+    "device_tech_info",
+    "behavior_summary",
+    "sale_advice",
+  ]) {
+    delete compact[field];
+    if (
+      new TextEncoder().encode(JSON.stringify(compact)).byteLength <=
+      MAX_PAYLOAD_BYTES
+    ) {
+      break;
+    }
+  }
   return compact;
 }
 
