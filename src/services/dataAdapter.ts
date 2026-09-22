@@ -286,17 +286,17 @@ export async function saveConfig(config: SiteConfig): Promise<boolean> {
 
   if (config.admin.supabaseUrl && config.admin.supabaseAnonKey) {
     try {
-      await syncConfigToSupabase(config);
+      return await syncConfigToSupabase(config);
     } catch {
-      // Supabase sync is best effort. The local copy is the source of truth.
+      // Bản local vẫn còn, nhưng caller cần biết cloud sync thất bại.
+      return false;
     }
-    return true;
   }
 
   console.warn(
     "Database mode is enabled, but Supabase URL/key are missing. Local save still succeeded.",
   );
-  return true;
+  return false;
 }
 
 export async function saveConfigWithCredentials(
@@ -426,7 +426,13 @@ create policy "funnel analytics can be written" on public.funnel_analytics for i
 drop policy if exists "funnel analytics can be updated" on public.funnel_analytics;
 create policy "funnel analytics can be updated" on public.funnel_analytics for update to authenticated using (id = 1) with check (id = 1);
 
-create table if not exists public.leads (id uuid primary key default gen_random_uuid(), created_at timestamptz not null default now(), name text, phone text, email text, city text, major text, ai_score int, ai_rank text, risk_level text, risk_reasons text[], recommended_action text, behavior_summary text, sale_advice text, device_tech_info text, traffic_ads_source text, network_provider text, network_label text, current_session int, visits_today int, visits_month int, utm_source text, utm_medium text, utm_campaign text, utm_content text, utm_term text, fbclid text, ttclid text, gclid text, raw_query text, referrer text, attribution_model text, attribution_detected_by text, utm_params jsonb, variant text, landing_url text, device_manufacturer text, device_family text, device_model text, operating_system text, browser text, visitor_behavior_payload jsonb);
+create table if not exists public.leads (id uuid primary key default gen_random_uuid(), created_at timestamptz not null default now(), name text, phone text, email text, city text, major text, ai_score int, ai_rank text, risk_level text, risk_reasons text[], recommended_action text, behavior_summary text, sale_advice text, sale_align text, sale_assigned_to text, sales_email_recipients text, sales_distribution_mode text, sales_distribution_weights jsonb, sales_send_webhook boolean, device_tech_info text, traffic_ads_source text, network_provider text, network_label text, current_session int, visits_today int, visits_month int, utm_source text, utm_medium text, utm_campaign text, utm_content text, utm_term text, fbclid text, ttclid text, gclid text, raw_query text, referrer text, attribution_model text, attribution_detected_by text, utm_params jsonb, variant text, landing_url text, device_manufacturer text, device_family text, device_model text, operating_system text, browser text, visitor_behavior_payload jsonb);
+alter table public.leads add column if not exists sale_align text;
+alter table public.leads add column if not exists sale_assigned_to text;
+alter table public.leads add column if not exists sales_email_recipients text;
+alter table public.leads add column if not exists sales_distribution_mode text;
+alter table public.leads add column if not exists sales_distribution_weights jsonb;
+alter table public.leads add column if not exists sales_send_webhook boolean;
 alter table public.leads enable row level security;
 drop policy if exists "leads can be created by public form" on public.leads;
 create policy "leads can be created by public form" on public.leads for insert with check (true);
@@ -508,6 +514,12 @@ export interface LeadRecord {
   recommendedAction?: string | undefined;
   behaviorSummary?: string | undefined;
   saleAdvice?: string | undefined;
+  saleAlign?: string | undefined;
+  saleAssignedTo?: string | undefined;
+  salesEmailRecipients?: string | undefined;
+  salesDistributionMode?: string | undefined;
+  salesDistributionWeights?: Record<string, number> | undefined;
+  salesSendWebhook?: boolean | undefined;
   deviceTechInfo?: string | undefined;
   trafficAdsSource?: string | undefined;
   networkProvider?: string | undefined;
@@ -1112,6 +1124,12 @@ async function pushLeadToSupabase(
       recommended_action: lead.recommendedAction ?? null,
       behavior_summary: lead.behaviorSummary ?? null,
       sale_advice: lead.saleAdvice ?? null,
+      sale_align: lead.saleAlign ?? null,
+      sale_assigned_to: lead.saleAssignedTo ?? null,
+      sales_email_recipients: lead.salesEmailRecipients ?? null,
+      sales_distribution_mode: lead.salesDistributionMode ?? null,
+      sales_distribution_weights: lead.salesDistributionWeights ?? null,
+      sales_send_webhook: lead.salesSendWebhook ?? null,
       device_tech_info: lead.deviceTechInfo ?? null,
       traffic_ads_source: lead.trafficAdsSource ?? null,
       network_provider: lead.networkProvider ?? null,

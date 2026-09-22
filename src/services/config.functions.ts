@@ -18,70 +18,67 @@ async function decrementCountdownWithServiceRoleImpl(input: {
 }): Promise<{ ok: boolean; changed?: boolean; reason?: string }> {
   const url = input.url.replace(/\/$/, "");
   const serviceKey = process.env["SUPABASE_SERVICE_ROLE_KEY"] || "";
-
   const headers = {
     apikey: serviceKey,
     Authorization: serviceKey ? `Bearer ${serviceKey}` : "",
   };
 
-  const read = await fetch(
-    `${url}/rest/v1/funnel_configs?id=eq.1&select=data`,
-    {
-      headers,
-    },
-  );
-  if (!read.ok) return { ok: false, reason: "read_failed" };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const read = await fetch(
+      `${url}/rest/v1/funnel_configs?id=eq.1&select=data`,
+      { headers },
+    );
+    if (!read.ok) return { ok: false, reason: "read_failed" };
 
-  const rows = (await read.json()) as Array<{
-    data?: {
-      countdown?: {
-        slotsLeft?: number;
-        enabled?: boolean;
-        headline?: string;
-      };
+    const rows = (await read.json()) as Array<{
+      data?: Record<string, unknown>;
+    }>;
+    const dataRow = rows[0]?.data;
+    const countdown = dataRow?.["countdown"] as
+      Record<string, unknown> | undefined;
+    const currentSlots = Number(countdown?.["slotsLeft"] ?? 12);
+    if (currentSlots <= 0) return { ok: true, changed: false };
+    const nextData = structuredClone(
+      (dataRow ?? {}) as Record<string, unknown>,
+    );
+    nextData["countdown"] = {
+      ...(countdown ?? {}),
+      enabled: true,
+      autoDecrement: true,
+      headline:
+        typeof countdown?.["headline"] === "string"
+          ? countdown["headline"]
+          : "suất học bổng miễn 100% KTX tháng này",
+      slotsLeft: currentSlots - 1,
+      template:
+        typeof countdown?.["template"] === "string"
+          ? countdown["template"]
+          : "premium",
     };
-  }>;
-  const dataRow = rows[0]?.data as Record<string, unknown> | undefined;
-  const countdown = dataRow?.["countdown"] as
-    Record<string, unknown> | undefined;
-  const nextData = structuredClone((dataRow ?? {}) as Record<string, unknown>);
-  const currentSlots = Number(
-    countdown && typeof countdown["slotsLeft"] !== "undefined"
-      ? countdown["slotsLeft"]
-      : 12,
-  );
-  const nextCountdown = {
-    ...(countdown ?? {}),
-    enabled: true,
-    autoDecrement: true,
-    headline:
-      typeof countdown?.["headline"] === "string"
-        ? countdown["headline"]
-        : "suất học bổng miễn 100% KTX tháng này",
-    slotsLeft: Math.max(0, currentSlots - 1),
-    template:
-      typeof countdown?.["template"] === "string"
-        ? countdown["template"]
-        : "premium",
-  };
-  nextData["countdown"] = nextCountdown;
 
-  const write = await fetch(`${url}/rest/v1/funnel_configs?id=eq.1`, {
-    method: "PATCH",
-    headers: {
-      ...headers,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify({
-      data: nextData,
-      updated_at: new Date().toISOString(),
-    }),
-  });
-
-  return write.ok
-    ? { ok: true, changed: true }
-    : { ok: false, reason: "write_failed" };
+    const write = await fetch(
+      `${url}/rest/v1/funnel_configs?id=eq.1&data->countdown->>slotsLeft=eq.${currentSlots}`,
+      {
+        method: "PATCH",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          data: nextData,
+          updated_at: new Date().toISOString(),
+        }),
+      },
+    );
+    if (!write.ok) return { ok: false, reason: "write_failed" };
+    const changedRows =
+      typeof write.json === "function"
+        ? ((await write.json().catch(() => [])) as unknown[])
+        : [true];
+    if (changedRows.length > 0) return { ok: true, changed: true };
+  }
+  return { ok: false, reason: "write_conflict" };
 }
 
 function stripSecrets(config: Record<string, unknown>) {

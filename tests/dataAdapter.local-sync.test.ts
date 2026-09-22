@@ -63,7 +63,7 @@ test("loadConfig keeps local storage mode when the user has selected local save"
   assert.equal(config.admin.storageMode, "local");
 });
 
-test("saveConfig stores a local copy even if Supabase sync fails", async () => {
+test("saveConfig stores a local copy and reports failed Supabase sync", async () => {
   localStore.clear();
   globalThis.fetch = async () => {
     throw new Error("network");
@@ -80,7 +80,7 @@ test("saveConfig stores a local copy even if Supabase sync fails", async () => {
   };
 
   const result = await saveConfig(config);
-  assert.equal(result, true);
+  assert.equal(result, false);
   assert.ok(localStore.has("funnel_site_config_v1"));
 });
 

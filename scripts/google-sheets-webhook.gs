@@ -125,7 +125,11 @@ function writePayload(payload) {
       "email_provider",
       "email_from_configured",
       "email_customer_template",
+      "email_customer_body",
       "email_sales_template",
+      "email_sales_body",
+      "email_customer_cta_label",
+      "email_sales_cta_label",
       "email_customer_cta_url",
       "email_sales_cta_url",
       "landing_url",
@@ -243,7 +247,9 @@ function ensureHeaders(sheet, headers) {
   // Đổi tên cột trong Admin => ghi đè lại hàng tiêu đề, KHÔNG chèn hàng mới
   // (chèn hàng sẽ tạo nhiều hàng tiêu đề trùng lặp trong Sheet).
   if (headers.length < width) {
-    sheet.getRange(1, headers.length + 1, 1, width - headers.length).clearContent();
+    sheet
+      .getRange(1, headers.length + 1, 1, width - headers.length)
+      .clearContent();
   }
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
 }

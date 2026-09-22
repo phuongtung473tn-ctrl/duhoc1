@@ -438,7 +438,11 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         email_provider: config.emailAutomation.provider,
         email_from_configured: Boolean(config.emailAutomation.fromEmail.trim()),
         email_customer_template: config.emailAutomation.subject,
+        email_customer_body: config.emailAutomation.body,
         email_sales_template: config.emailAutomation.notifySubject,
+        email_sales_body: config.emailAutomation.notifyBody,
+        email_customer_cta_label: config.emailAutomation.customerCtaLabel,
+        email_sales_cta_label: config.emailAutomation.salesCtaLabel,
         email_customer_cta_url: config.emailAutomation.customerCtaUrl,
         email_sales_cta_url: config.emailAutomation.salesCtaUrl,
       };
@@ -572,18 +576,12 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
           "Database mode fallback to local storage: Supabase cloud sync unavailable; lead was still saved locally.",
         );
       }
-      const countdownSaved = await decrementCountdown(savedLead.id).catch(
+      const countdownSavedPromise = decrementCountdown(savedLead.id).catch(
         (countdownErr) => {
           console.warn("[v0] decrementCountdown failed:", countdownErr);
           return false;
         },
       );
-      if (!countdownSaved) {
-        toast.warning("Lead đã lưu, nhưng chưa cập nhật được số suất.", {
-          description:
-            "Kiểm tra SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY trên server rồi redeploy.",
-        });
-      }
 
       // Ghi nhận chuyển đổi cho Analytics Dashboard + A/B comparison.
       // Lỗi tracking (vd localStorage đầy) không được chặn luồng submit.
@@ -777,6 +775,14 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
           "[v0] Auto-email step crashed, submit still succeeds:",
           emailErr,
         );
+      }
+
+      const countdownSaved = await countdownSavedPromise;
+      if (!countdownSaved) {
+        toast.warning("Lead đã lưu, nhưng chưa cập nhật được số suất.", {
+          description:
+            "Kiểm tra SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY trên server rồi redeploy.",
+        });
       }
 
       // Lỗi email KHÔNG được biến submit của khách thành lỗi: lead đã lưu +
