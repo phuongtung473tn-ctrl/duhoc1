@@ -297,11 +297,19 @@ function Landing() {
       display: section(id)?.enabled === false ? "none" : undefined,
     };
   };
-  const gallerySlides = GALLERY.map((slide, index) => ({
-    ...slide,
-    img: content.galleryImageUrls[index] || slide.img,
-    caption: content.galleryCaptions[index] || slide.caption,
-  }));
+  const gallerySlides = [
+    ...GALLERY.map((slide, index) => ({
+      ...slide,
+      img: content.galleryImageUrls[index] || slide.img,
+      caption: content.galleryCaptions[index] || slide.caption,
+    })),
+    ...content.galleryImageUrls.slice(GALLERY.length).map((img, index) => ({
+      img,
+      caption:
+        content.galleryCaptions[GALLERY.length + index] ||
+        `Ảnh thực tế chương trình ${GALLERY.length + index + 1}`,
+    })),
+  ].filter((slide) => Boolean(slide.img));
   const sectionIndexMap = new Map(
     content.sectionsArray.map((item, i) => [item.id, i]),
   );

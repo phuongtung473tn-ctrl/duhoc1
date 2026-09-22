@@ -11,24 +11,26 @@ export function PhotoCarousel({
   slides: Slide[];
   interval?: number;
 }) {
+  const safeSlides = slides.filter((slide) => Boolean(slide.img));
   const [i, setI] = useState(0);
   const [lightbox, setLightbox] = useState(false);
   const paused = useRef(false);
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      if (!paused.current) setI((p) => (p + 1) % slides.length);
+      if (!paused.current && safeSlides.length > 1)
+        setI((p) => (p + 1) % safeSlides.length);
     }, interval);
     return () => window.clearInterval(id);
-  }, [slides.length, interval]);
+  }, [safeSlides.length, interval]);
 
   useEffect(() => {
     if (!lightbox) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setLightbox(false);
       if (e.key === "ArrowLeft")
-        setI((p) => (p - 1 + slides.length) % slides.length);
-      if (e.key === "ArrowRight") setI((p) => (p + 1) % slides.length);
+        setI((p) => (p - 1 + safeSlides.length) % safeSlides.length);
+      if (e.key === "ArrowRight") setI((p) => (p + 1) % safeSlides.length);
     };
     window.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -36,12 +38,18 @@ export function PhotoCarousel({
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [lightbox, slides.length]);
+  }, [lightbox, safeSlides.length]);
+
+  useEffect(() => {
+    if (i >= safeSlides.length) setI(0);
+  }, [i, safeSlides.length]);
+
+  if (safeSlides.length === 0) return null;
 
   return (
     <>
       <div
-        className="overflow-hidden rounded-2xl bg-card ring-1 ring-border"
+        className="min-w-0 max-w-full overflow-hidden rounded-2xl bg-card ring-1 ring-border"
         onMouseEnter={() => (paused.current = true)}
         onMouseLeave={() => (paused.current = false)}
         onTouchStart={() => (paused.current = true)}
@@ -50,11 +58,14 @@ export function PhotoCarousel({
       >
         <div className="relative">
           <div
-            className="flex transition-transform duration-700 ease-out"
+            className="flex min-w-0 transition-transform duration-700 ease-out"
             style={{ transform: `translateX(-${i * 100}%)` }}
           >
-            {slides.map((s, idx) => (
-              <figure key={s.img} className="w-full shrink-0">
+            {safeSlides.map((s, idx) => (
+              <figure
+                key={`${s.img}-${idx}`}
+                className="min-w-0 w-full shrink-0"
+              >
                 <button
                   type="button"
                   onClick={() => setLightbox(true)}
@@ -68,14 +79,14 @@ export function PhotoCarousel({
                     height={800}
                     loading="lazy"
                     decoding="async"
-                    className="aspect-[16/10] w-full max-w-full cursor-zoom-in object-cover transition group-hover:brightness-95"
+                    className="block aspect-[16/10] h-auto min-h-0 w-full max-w-full cursor-zoom-in object-cover transition group-hover:brightness-95"
                   />
                   <span className="pointer-events-none absolute bottom-2 right-2 rounded-lg bg-background/80 px-2 py-1 text-[10px] font-bold text-foreground opacity-0 backdrop-blur transition group-hover:opacity-100">
                     Bam de phong to
                   </span>
                 </button>
-                <figcaption className="px-4 py-3 text-center text-sm font-semibold text-card-foreground/85">
-                  {idx + 1}/{slides.length} — {s.caption}
+                <figcaption className="break-words px-4 py-3 text-center text-sm font-semibold leading-relaxed text-card-foreground/85">
+                  {idx + 1}/{safeSlides.length} — {s.caption}
                 </figcaption>
               </figure>
             ))}
@@ -84,7 +95,9 @@ export function PhotoCarousel({
           <button
             type="button"
             aria-label="Anh truoc"
-            onClick={() => setI((p) => (p - 1 + slides.length) % slides.length)}
+            onClick={() =>
+              setI((p) => (p - 1 + safeSlides.length) % safeSlides.length)
+            }
             className="absolute left-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-background/80 text-lg font-bold backdrop-blur sm:h-10 sm:w-10"
           >
             ‹
@@ -92,7 +105,7 @@ export function PhotoCarousel({
           <button
             type="button"
             aria-label="Anh tiep theo"
-            onClick={() => setI((p) => (p + 1) % slides.length)}
+            onClick={() => setI((p) => (p + 1) % safeSlides.length)}
             className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-background/80 text-lg font-bold backdrop-blur sm:h-10 sm:w-10"
           >
             ›
@@ -100,9 +113,9 @@ export function PhotoCarousel({
         </div>
 
         <div className="flex justify-center gap-2 pb-4">
-          {slides.map((s, idx) => (
+          {safeSlides.map((s, idx) => (
             <button
-              key={s.img}
+              key={`${s.img}-${idx}`}
               type="button"
               aria-label={`Xem anh ${idx + 1}`}
               onClick={() => setI(idx)}
@@ -135,7 +148,7 @@ export function PhotoCarousel({
             aria-label="Anh truoc"
             onClick={(e) => {
               e.stopPropagation();
-              setI((p) => (p - 1 + slides.length) % slides.length);
+              setI((p) => (p - 1 + safeSlides.length) % safeSlides.length);
             }}
             className="absolute left-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-2xl font-bold text-white transition hover:bg-white/25"
           >
@@ -146,12 +159,12 @@ export function PhotoCarousel({
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={slides[i]!.img}
-              alt={slides[i]!.caption}
-              className="max-h-[85vh] w-auto rounded-xl object-contain"
+              src={safeSlides[i]!.img}
+              alt={safeSlides[i]!.caption}
+              className="max-h-[85vh] max-w-[calc(100vw-2rem)] rounded-xl object-contain"
             />
             <figcaption className="mt-3 text-center text-sm font-semibold text-white/90">
-              {i + 1}/{slides.length} — {slides[i]!.caption}
+              {i + 1}/{safeSlides.length} — {safeSlides[i]!.caption}
             </figcaption>
           </figure>
           <button
@@ -159,7 +172,7 @@ export function PhotoCarousel({
             aria-label="Anh tiep theo"
             onClick={(e) => {
               e.stopPropagation();
-              setI((p) => (p + 1) % slides.length);
+              setI((p) => (p + 1) % safeSlides.length);
             }}
             className="absolute right-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-2xl font-bold text-white transition hover:bg-white/25"
           >
