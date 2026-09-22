@@ -273,6 +273,10 @@ const REQUIRED_LEAD_FIELDS = [
   "email_sales_cta_url",
 ] as const;
 
+const SHEETS_PAYLOAD_FIELDS = Array.from(
+  new Set([...DEFAULT_SHEETS_FIELDS, ...REQUIRED_LEAD_FIELDS]),
+);
+
 function normalizeOutboundPayload(
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -365,21 +369,18 @@ async function postOne(
     }
 
     if (ep.type === "sheets") {
-      const hasFields = Boolean(ep.fields?.length);
-      const fields = hasFields
-        ? Array.from(new Set([...ep.fields!, ...REQUIRED_LEAD_FIELDS]))
-        : undefined;
+      const fields = Array.from(
+        new Set([...(ep.fields || []), ...SHEETS_PAYLOAD_FIELDS]),
+      );
       const hasColumnMap = Boolean(
         ep.columnMap && Object.keys(ep.columnMap).length,
       );
-      const filtered = hasFields
-        ? Object.fromEntries(
-            Object.entries(payload).filter(([key]) => fields?.includes(key)),
-          )
-        : payload;
+      const filtered = Object.fromEntries(
+        Object.entries(payload).filter(([key]) => fields.includes(key)),
+      );
       body = {
         ...filtered,
-        ...(hasFields ? { sheet_fields: fields } : {}),
+        sheet_fields: fields,
         ...(hasColumnMap ? { sheet_columns: ep.columnMap } : {}),
       };
     } else if (ep.type === "telegram") {

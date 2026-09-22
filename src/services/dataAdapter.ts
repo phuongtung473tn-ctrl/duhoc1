@@ -286,7 +286,28 @@ export async function saveConfig(config: SiteConfig): Promise<boolean> {
 
   if (config.admin.supabaseUrl && config.admin.supabaseAnonKey) {
     try {
-      return await syncConfigToSupabase(config);
+      const synced = await syncConfigToSupabase(config);
+      if (synced) return true;
+
+      // A proxy can report a failed/empty POST even after Supabase committed it.
+      // Read back the row before showing an error to the administrator.
+      const cloud = await loadCloudConfig(config);
+      if (cloud) {
+        const comparable = (value: SiteConfig) => {
+          const copy = structuredClone(value);
+          copy.admin.supabaseAnonKey = "";
+          copy.admin.password = "";
+          copy.admin.backupCronToken = "";
+          copy.emailAutomation.resendApiKey = "";
+          copy.emailAutomation.gmailClientId = "";
+          copy.emailAutomation.gmailClientSecret = "";
+          copy.emailAutomation.gmailRefreshToken = "";
+          copy.tracking.tiktokAccessToken = "";
+          return JSON.stringify(copy);
+        };
+        return comparable(cloud) === comparable(config);
+      }
+      return false;
     } catch {
       // Bản local vẫn còn, nhưng caller cần biết cloud sync thất bại.
       return false;

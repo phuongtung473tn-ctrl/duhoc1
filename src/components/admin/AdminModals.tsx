@@ -8438,7 +8438,7 @@ function SaveHint() {
           const saved = await save();
           if (!saved) {
             setMessage(
-              "Chưa lưu được. Kiểm tra phiên đăng nhập Supabase và quyền admin_users trong Storage.",
+              "Đã lưu local, nhưng chưa xác nhận được đồng bộ Supabase. Kiểm tra phiên đăng nhập quản trị và thử lưu lại.",
             );
             return;
           }
