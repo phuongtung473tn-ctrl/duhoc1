@@ -231,11 +231,8 @@ test("decrementCountdownWithServiceRole refuses to invent a countdown when confi
   });
 
   assert.equal(result.ok, false);
-  assert.equal(result.reason, "missing_service_key");
-  assert.equal(
-    calls.some((call) => call.method === "PATCH"),
-    false,
-  );
+  assert.equal(result.reason, "missing_supabase_key");
+  assert.equal(calls.some((call) => call.method === "PATCH"), false);
 });
 
 test("saved lead should still be treated as success when downstream webhooks fail", async () => {
