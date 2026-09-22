@@ -327,7 +327,9 @@ export async function saveConfig(config: SiteConfig): Promise<boolean> {
         return false;
       }
       const synced = await syncConfigToSupabase(config);
-      if (synced) return localSaved;
+      // Database mode is authoritative for the full config. A large image-heavy
+      // config can exceed the browser localStorage quota even when Supabase saves it.
+      if (synced) return true;
 
       // A proxy can report a failed/empty POST even after Supabase committed it.
       // Read back the row before showing an error to the administrator.
@@ -2142,15 +2144,6 @@ async function syncConfigToSupabase(config: SiteConfig): Promise<boolean> {
       data: cloudConfig,
       updated_at: new Date().toISOString(),
     };
-    const payloadBytes = new TextEncoder().encode(
-      JSON.stringify(row),
-    ).byteLength;
-    if (payloadBytes > 4_000_000) {
-      console.warn(
-        `Supabase config sync skipped: landing config is too large (${payloadBytes} bytes). Compress or remove some inline images.`,
-      );
-      return false;
-    }
     const patch = await fetch(`${base}?id=eq.1`, {
       method: "PATCH",
       headers,
