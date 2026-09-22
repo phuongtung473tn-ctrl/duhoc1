@@ -453,6 +453,14 @@ export function LeadForm({ id = "dang-ky" }: { id?: string }) {
         email_sales_cta_label: config.emailAutomation.salesCtaLabel,
         email_customer_cta_url: config.emailAutomation.customerCtaUrl,
         email_sales_cta_url: config.emailAutomation.salesCtaUrl,
+        auto_email_enabled: config.emailAutomation.enabled,
+        auto_email_provider: config.emailAutomation.provider,
+        auto_email_notify: notificationRecipients.join(", "),
+        auto_email_sales_list: salesRecipients.join(", "),
+        auto_email_customer_subject: config.emailAutomation.subject,
+        auto_email_customer_body: config.emailAutomation.body,
+        auto_email_sales_subject: config.emailAutomation.notifySubject,
+        auto_email_sales_body: config.emailAutomation.notifyBody,
       };
 
       // Lưu Mini-CRM (localStorage / Supabase) để hiện trong bảng Quản Lý Lead.

@@ -288,7 +288,7 @@ export async function saveConfig(config: SiteConfig): Promise<boolean> {
   if (config.admin.supabaseUrl && config.admin.supabaseAnonKey) {
     try {
       const synced = await syncConfigToSupabase(config);
-      if (synced) return true;
+      if (synced) return localSaved;
 
       // A proxy can report a failed/empty POST even after Supabase committed it.
       // Read back the row before showing an error to the administrator.
@@ -306,7 +306,7 @@ export async function saveConfig(config: SiteConfig): Promise<boolean> {
           copy.tracking.tiktokAccessToken = "";
           return JSON.stringify(copy);
         };
-        return comparable(cloud) === comparable(config);
+        return localSaved && comparable(cloud) === comparable(config);
       }
       return false;
     } catch {
