@@ -105,6 +105,7 @@ function writePayload(payload) {
     const allHeaders = [
       "received_at",
       "event",
+      "deployment_revision",
       "webhook_delivery_id",
       "idempotency_key",
       "created_at",
@@ -118,6 +119,15 @@ function writePayload(payload) {
       "sale_assigned_to",
       "sales_distribution_mode",
       "sales_email_recipients",
+      "sales_distribution_weights",
+      "sales_send_webhook",
+      "email_automation_enabled",
+      "email_provider",
+      "email_from_configured",
+      "email_customer_template",
+      "email_sales_template",
+      "email_customer_cta_url",
+      "email_sales_cta_url",
       "landing_url",
       "ab_variant",
       "ai_score",
@@ -202,7 +212,13 @@ function parsePayload(event) {
   if (!event || !event.postData || !event.postData.contents) {
     throw new Error("Missing JSON request body");
   }
-  return parseJsonPayload(event.postData.contents);
+  var raw = String(event.postData.contents || "").trim();
+  // Accept both application/json and the simple form POST used by the site.
+  // Some Apps Script deployments do not populate event.parameter reliably.
+  if (raw.indexOf("payload=") === 0) {
+    return parseJsonPayload(decodeURIComponent(raw.slice("payload=".length)));
+  }
+  return parseJsonPayload(raw);
 }
 
 function parseJsonPayload(raw) {
