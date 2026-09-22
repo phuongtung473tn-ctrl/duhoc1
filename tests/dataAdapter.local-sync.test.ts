@@ -84,6 +84,61 @@ test("saveConfig stores a local copy and reports failed Supabase sync", async ()
   assert.ok(localStore.has("funnel_site_config_v1"));
 });
 
+test("loadCloudConfig keeps the newer local config when the cloud snapshot is older", async () => {
+  localStore.clear();
+  const localConfig = {
+    ...DEFAULT_CONFIG,
+    admin: {
+      ...DEFAULT_CONFIG.admin,
+      storageMode: "database",
+      supabaseUrl: "https://example.supabase.co",
+      supabaseAnonKey: "anon-key",
+    },
+    landing: {
+      ...DEFAULT_CONFIG.landing,
+      galleryImageUrls: ["custom-1.jpg", "custom-2.jpg"],
+      graduationImageUrls: ["grad-1.jpg"],
+    },
+  };
+  const newerLocalTime = new Date(Date.now() + 60_000).toISOString();
+  localStore.set("funnel_site_config_v1", JSON.stringify(localConfig));
+  localStore.set(
+    "funnel_site_config_meta_v1",
+    JSON.stringify({ updatedAt: newerLocalTime }),
+  );
+
+  globalThis.fetch = async () =>
+    ({
+      ok: true,
+      json: async () => [
+        {
+          data: {
+            ...DEFAULT_CONFIG,
+            admin: {
+              ...DEFAULT_CONFIG.admin,
+              storageMode: "database",
+              supabaseUrl: "https://example.supabase.co",
+              supabaseAnonKey: "anon-key",
+            },
+            landing: {
+              ...DEFAULT_CONFIG.landing,
+              galleryImageUrls: ["default-1.jpg"],
+              graduationImageUrls: [],
+            },
+          },
+          updated_at: new Date(Date.now() - 60_000).toISOString(),
+        },
+      ],
+    }) as Response;
+
+  const { loadCloudConfig } = await import("../src/services/dataAdapter.ts");
+  const hydrated = await loadCloudConfig(localConfig);
+
+  assert.ok(hydrated);
+  assert.deepEqual(hydrated.landing.galleryImageUrls, ["custom-1.jpg", "custom-2.jpg"]);
+  assert.deepEqual(hydrated.landing.graduationImageUrls, ["grad-1.jpg"]);
+});
+
 test("saveLead falls back to local storage when remote database insert fails", async () => {
   localStore.clear();
   globalThis.fetch = async () => {

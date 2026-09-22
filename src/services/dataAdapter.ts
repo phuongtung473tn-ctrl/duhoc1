@@ -16,6 +16,7 @@ import { getSupabaseAccessToken } from "@/lib/supabase-auth";
 import { saveConfigWithSupabaseAuth } from "@/services/config.functions";
 
 const CONFIG_KEY = "funnel_site_config_v1";
+const CONFIG_META_KEY = "funnel_site_config_meta_v1";
 const LEADS_KEY = "funnel_leads_v1";
 const ANALYTICS_KEY = "funnel_analytics_v1";
 const BACKUP_KEY = "funnel_backup_snapshots_v1";
@@ -32,6 +33,7 @@ function bearer(key: string): string {
 
 const browserDataKeys = [
   CONFIG_KEY,
+  CONFIG_META_KEY,
   LEADS_KEY,
   ANALYTICS_KEY,
   BACKUP_KEY,
@@ -172,10 +174,27 @@ function persistLocalConfig(config: SiteConfig): boolean {
   if (!isBrowser()) return false;
   try {
     const serialized = JSON.stringify(config);
+    const updatedAt = new Date().toISOString();
     window.localStorage.setItem(CONFIG_KEY, serialized);
+    window.localStorage.setItem(
+      CONFIG_META_KEY,
+      JSON.stringify({ updatedAt }),
+    );
     return window.localStorage.getItem(CONFIG_KEY) === serialized;
   } catch {
     return false;
+  }
+}
+
+function readLocalConfigUpdatedAt(): string | null {
+  if (!isBrowser()) return null;
+  try {
+    const raw = window.localStorage.getItem(CONFIG_META_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { updatedAt?: unknown };
+    return typeof parsed.updatedAt === "string" ? parsed.updatedAt : null;
+  } catch {
+    return null;
   }
 }
 
@@ -246,7 +265,7 @@ export async function loadCloudConfig(
   }
   try {
     const response = await fetch(
-      `${config.admin.supabaseUrl.replace(/\/$/, "")}/rest/v1/${CLOUD_CONFIG_TABLE}?id=eq.1&select=data`,
+      `${config.admin.supabaseUrl.replace(/\/$/, "")}/rest/v1/${CLOUD_CONFIG_TABLE}?id=eq.1&select=data,updated_at`,
       {
         headers: {
           apikey: config.admin.supabaseAnonKey,
@@ -258,6 +277,20 @@ export async function loadCloudConfig(
     const rows = (await response.json()) as unknown;
     if (!Array.isArray(rows) || !isRecord(rows[0])) return null;
     const data = rows[0]["data"];
+    const updatedAt = typeof rows[0]["updated_at"] === "string" ? rows[0]["updated_at"] : "";
+    const localUpdatedAt = readLocalConfigUpdatedAt();
+    if (localUpdatedAt && updatedAt) {
+      const localMs = new Date(localUpdatedAt).getTime();
+      const cloudMs = new Date(updatedAt).getTime();
+      if (!Number.isNaN(localMs) && !Number.isNaN(cloudMs) && localMs >= cloudMs) {
+        const safe = structuredClone(config);
+        if (!safe.form.webhookUrl.trim()) {
+          safe.form.webhookUrl =
+            config.form.webhookUrl.trim() || DEFAULT_CONFIG.form.webhookUrl;
+        }
+        return safe;
+      }
+    }
     if (!isRecord(data)) return null;
     // Credential không được lưu cloud, nên luôn giữ bản local khi hydrate.
     const hydrated = preserveLocalSecrets(
